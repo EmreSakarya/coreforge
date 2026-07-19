@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.mod
+runs/
+solver/coreforge
+solver/coreforge.exe
+solver/coreforge.build
+solver/*.mod
+solver/build.log
+flux.csv
+power.csv

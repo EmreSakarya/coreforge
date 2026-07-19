@@ -1,0 +1,13 @@
+# CoreForge — Streamlit theme (safe layer; ui.py adds the polish CSS)
+[theme]
+primaryColor = "#2a78d6"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#eef2f8"
+textColor = "#0b1220"
+font = "sans serif"
+
+[server]
+maxUploadSize = 10
+
+[browser]
+gatherUsageStats = false
