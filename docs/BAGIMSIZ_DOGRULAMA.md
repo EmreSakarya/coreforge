@@ -1,140 +1,148 @@
-# CoreForge — Bağımsız Doğrulama Protokolü
+# Bağımsız Doğrulama Kılavuzu (Independent Verification Pack)
 
-Bu belge, CoreForge'un sonuçlarını **koddan bağımsız** bir denetçiye (bir
-insan gözden geçiren veya ayrı bir dil modeli oturumu) yeniden ürettirmek,
-sonra kodu **düşmanca** sınamak için hazır komut istemleri içerir. Amaç,
-"kendi kendini onaylayan" doğrulamadan kaçınmaktır: sayıları üreten taraf ile
-onları sorgulayan taraf farklı olmalıdır.
+Bu doküman, CoreForge'un doğruluğunu ve kalitesini **bu projeyi geliştiren
+araçtan bağımsız** bir yapay zekâya (veya bir insana) test ettirmek için
+hazır malzeme içerir. Üç tur önerilir; her turun kopyala-yapıştır
+kullanılabilecek istemi (prompt) aşağıdadır.
 
-**Temel pratik:** Bu turlarda bulunan HER somut hata/eksik, `verify.py`'ye
-**kalıcı bir kontrole** dönüştürülür. Doğrulama tek seferlik bir olay değil,
-regresyon kapısıdır.
-
-> Denetçiye kod tabanının tamamına salt-okunur erişim verin. Denetçinin
-> `python3 verify.py` (derleyici varsa) veya `python3 verify.py --no-engine`
-> (derleyici yoksa, saf-Python altküme) çalıştırabildiğinden emin olun.
+Neden bağımsız doğrulama? Bir sistemi geliştiren araç, kendi kör
+noktalarını paylaşır. Bağımsız bir gözün aynı kanıtları yeniden üretmesi
+(veya üretememesi) en güçlü kalite sinyalidir. Bu, nükleer yazılım
+pratiğindeki bağımsız gözden geçirme (independent review) ilkesinin
+küçültülmüş halidir.
 
 ---
 
-## Tur 1 — Çalıştırmalı yeniden üretim (reproduction)
+## Hazırlık
 
-Amaç: dokümandaki her sayının gerçekten bu koddan çıktığını bağımsızca
-doğrulamak.
+Bağımsız doğrulayıcıya verilecek malzeme:
 
-**Hazır komut istemi:**
-```
-Sana bir nötron difüzyon reaktör analiz kodu (CoreForge) verildi. Hiçbir
-sonuca güvenme; hepsini kendin çalıştırarak doğrula.
+1. **Kod:** `coreforge.zip` dosyasının tamamı (veya GitHub deposu linki).
+2. **İddialar:** `README.md` içindeki doğrulama tabloları ve
+   `docs/DOGRULAMA_RAPORU.md`.
+3. Aşağıdaki istemlerden uygun olanı.
 
-1. Motoru derle:
-     ifx -O3 -qopenmp solver/coreforge.f90 -o solver/coreforge
-     (ifx yoksa: gfortran -O3 -fopenmp ...  ; hiç derleyici yoksa 3. adıma geç)
-2. `python3 verify.py --fine` çalıştır. Tüm kontroller PASS mı?
-3. Derleyici yoksa `python3 verify.py --no-engine` çalıştır.
-4. docs/DOGRULAMA_RAPORU.md ve README.md'deki k_eff ve pcm-fark tablolarını
-   al; verify.py çıktısındaki gerçek sayılarla SATIR SATIR karşılaştır.
-   Uyuşmayan tek bir hücre var mı? Varsa dosya:satır ile bildir.
-5. IAEA-2D için mesh yakınsamasını kendin kontrol et: div=5, 8, 10 ile
-   çalıştır; k_eff monoton mu ve referansa (1.02959) yakınsıyor mu?
-
-Çıktı: her sayı için "yeniden üretildi / sapma X pcm / üretilemedi" tablosu.
-```
-
-**Beklenen:** Tüm kontroller PASS; doküman sayıları koşu sayılarıyla ≤ birkaç
-pcm uyumlu (mesh/optimizasyon kaynaklı küçük farklar kabul edilebilir, işaret
-ve büyüklük mantıklı olmalı).
+> Not: Dosya yükleme destekleyen ve kod çalıştırabilen bir yapay zekâ
+> seçin (ör. kod yorumlayıcısı/sandbox özelliği olan bir sohbet modeli).
+> Sandbox'ta Fortran derleyicisi yoksa `--no-engine` yolu kullanılır
+> (Tur A'da açıklanıyor).
 
 ---
 
-## Tur 2 — Düşmanca sınama (adversarial)
+## Tur A — Çalıştırmalı doğrulama (en güçlü kanıt)
 
-Amaç: kodu kırmaya, gizli varsayımları ve sessiz hataları ortaya çıkarmaya
-çalışmak. Denetçi "bunu nasıl yanlış sonuca zorlarım?" diye düşünmeli.
+Amaç: 24 otomatik kontrolün bağımsız bir makinede aynı sonuçları
+üretmesi. Kopyalayıp yapıştırın:
 
-**Hazır komut istemi:**
+```text
+Ekteki coreforge.zip bir 2B/3B çok gruplu nötron difüzyon çözücüsü
+(Fortran motoru + Python sürücüsü). Benim yazdığım bir kod DEĞİL;
+tarafsız biçimde doğrulamanı istiyorum.
+
+1) Zip'i aç. Ortamında Fortran derleyicisi varsa motoru derle:
+     gfortran -O3 -fopenmp solver/coreforge.f90 -o solver/coreforge
+   (Python tarafı zaten eksik motoru gfortran ile kendisi de derlemeyi
+   dener.) numpy gereklidir: pip install numpy
+2) python3 verify.py  çalıştır ve çıkan tabloyu OLDUĞU GİBİ raporla.
+   Fortran derleyicin yoksa şunu çalıştır:
+     python3 verify.py --no-engine
+   Bu, motorsuz saf-Python fizik alt kümesidir (tasarımcı eğilimleri,
+   tükenme 0-B, termal-hidrolik el hesapları, ksenon, kinetik).
+3) Şu üç soruya kanıta dayalı cevap ver:
+   a) PASS/FAIL tablosu koddaki iddialarla (README doğrulama tablosu)
+      tutarlı mı?
+   b) Kontrollerden herhangi biri "kendi kendini doğrulayan" (tautolojik)
+      mi — yani test, test ettiği kodla aynı formülü mü kullanıyor?
+      Hangileri gerçekten bağımsız referanslara (IAEA/OECD benchmark
+      değerleri, el hesapları, analitik çözümler) dayanıyor?
+   c) Testlerin KAPSAMADIĞI önemli bir fiziksel davranış görüyor musun?
 ```
-Bu kodun YANLIŞ olduğunu kanıtlamaya çalış. Şu saldırı vektörlerini dene ve
-her biri için somut bir girdi + gözlemlenen davranış bildir:
 
-- Fizik değişmezlikleri: mesh inceltme (div/divz artışı) k_eff'i referans
-  toleransının ötesinde KAYDIRIYOR mu? (Kaydırıyorsa ayrıklaştırma hatası
-  vardır.) QA parmakizi mesh değişiminde SABİT, ama pitch/kesit/BC
-  değişiminde DEĞİŞİYOR mu? (presets.physics_fingerprint)
-- Sınır koşulları: tümü yansıtıcı (reflective) BC'de sonsuz-ortam k_inf'i
-  analitik nuSf/Sa değerini veriyor mu? Vakum BC gevşetilince k düşüyor mu?
-- Simetri: simetrik bir çekirdekte akı/güç haritası simetrik mi? Köşe/kenar
-  hücre indekslemesinde kayma var mı? (geçmiş hata: burnup pmap köşe hücresi)
-- Korunum: T-H enerji dengesi kapanıyor mu (Q = ṁ·cp·ΔT)? Akı kalibrasyonu
-  belirtilen gücü geri veriyor mu (S = q_avg/κ, ν̄ İÇERMEMELİ)?
-- Birim tuzakları: ksenon σφ birimi (0.053 vs 5.3e-5), fz>π/2 kosinüs clamp
-  bayrağı sessizce mi tetikleniyor yoksa raporlanıyor mu?
-- Sayısal uçlar: 1 grup vs çok grup, NZ=1 (2B) ile tek-katman extrude 3B
-  bit-düzeyinde aynı mı? Yakınsamayan bir vaka "converged" diyor mu?
-
-Her bulguyu: {dosya:satır, tetikleyen girdi, beklenen, gözlemlenen, önem}
-biçiminde ver.
-```
-
-**Beklenen:** Kritik bir hata bulunmaması idealdir; ama bulunursa bu bir
-başarıdır — düzeltilir ve Tur 3'e geçilir.
+Beklenen sonuç: `all checks passed` (motorlu yolda 24 kontrol,
+motorsuz yolda 12 kontrol). Tek bir FAIL bile önemlidir — bana bildirin.
 
 ---
 
-## Tur 3 — Referans kontrol (independent-source cross-check)
+## Tur B — Düşmanca (adversarial) fizik ve kod eleştirisi
 
-Amaç: kodun ürettiği değerleri, kodla **hiçbir ortak kökeni olmayan** dış
-kaynaklarla karşılaştırmak.
+Amaç: hata bulmaya odaklı bağımsız bir göz. Model kapsamı bilinçli
+yaklaşımları "hata" sanmasın diye kapsam bildirimi isteme dahildir.
+Kopyalayıp yapıştırın:
 
-**Hazır komut istemi:**
+```text
+Ekteki coreforge.zip'teki reaktör fiziği kodunu DÜŞMANCA incele: görevin
+onu övmek değil, kusur bulmak. Kapsam bildirimi: bu kasıtlı olarak bir
+difüzyon kodudur (transport değil), 2 grup yarı-ampirik XS üretir
+(ENDF işleme değil), kapalı-kanal tek-faz T-H yapar (alt-kanal kodu
+değil). Bu kapsam SINIRLARINI hata olarak sayma; kapsam İÇİNDEKİ
+hataları ara.
+
+Modül modül incele ve her bulgu için (dosya:satır, ciddiyet, somut
+hatalı senaryo) ver:
+1) solver/coreforge.f90 — FDM ayrıklaştırma, harmonik ortalama D,
+   Robin vakum sınır koşulu (J = 0.4692·φ), kırmızı-siyah SOR,
+   güç iterasyonu. Şablon katsayılarında işaret/faktör hatası var mı?
+2) xslib.py — 2200 m/s mikroskopikler doğru mu? (σf5=582.6 b,
+   σa5=680.9 b, ν=2.432, σaB=759 b, Xe σa=2.65e6 b ...) Spektrum
+   faktörü yaklaşımının bozulacağı durumlar hangileri?
+3) burnup.py — Bateman RK4, denge Xe/Sm, bor letdown. Birim hataları
+   (barn↔cm², J↔MeV, gün↔saniye) var mı?
+4) kinetics.py — Keepin 6 grup (β=0.006502), inhour denklemi, matris
+   üsteli. Negatif reaktivitede kök seçimi doğru mu?
+5) thermal.py — Dittus-Boelter, iletim dirençleri, doyma marjı.
+   Enerji korunumu gerçekten kapanıyor mu?
+6) app.py/runner.py — durum yönetimi, fingerprint bütünlük katmanı
+   atlatılabilir mi (referans geçersizken geçerli gösterilebilir mi)?
+
+En ciddi 5 bulgunu ciddiyet sırasıyla listele. Bulgu yoksa "yok" deme;
+neden bulamadığını (hangi kontrolün seni ikna ettiğini) açıkla.
 ```
-CoreForge'un sonuçlarını bağımsız kaynaklarla çapraz-doğrula:
 
-1. IAEA-2D/3D benchmark: yayınlanmış referans (Argonne ANL-7416 / IAEA
-   benchmark seti) k_eff = 1.02959 (2B). Kodun sonucu bu değere kaç pcm
-   uzakta ve fark kaynağı (ayrıklaştırma mı, model mi) açıklanabiliyor mu?
-2. OECD/NEA C5G7 benchmark: referans k_eff = 1.18655. Koddaki homojenize
-   difüzyon yaklaşımının bu değerden sapması (~+31 pcm Richardson ekstrapo-
-   lasyonlu) fiziksel olarak makul bir MODEL hatası mı, yoksa uygulama hatası
-   mı? c5g7_data.py kesitleri referansla tutarlı mı?
-3. Yakıt tasarımcısının (xslib) ürettiği 2-grup kesitleri, kodla ilgisiz
-   IAEA-2D yakıt sabitleriyle (D1≈1.5, D2≈0.4, Sa1≈0.010, Sa2≈0.080,
-   S12≈0.020) kıyasla — mühendislik mertebesinde tutuyor mu?
-4. Nokta kinetiği: +100/−100 pcm adım için periyodu analitik inhour
-   denklemiyle bağımsız hesapla; kodun periyoduyla %1 içinde mi?
-
-Çıktı: her kaynak için {kod değeri, dış referans, fark, "model hatası /
-uygulama hatası / kabul" yargısı}.
-```
-
-**Beklenen:** Sapmalar ya analitik olarak açıklanabilir (C5G7 model sınırı
-gibi) ya da tolerans içinde olmalı.
+Değerlendirme: MAJOR bulgu → düzeltilmeli ve verify.py'ye kalıcı kontrol
+eklenmeli (bu projenin standart pratiği). MINOR/kapsam-dışı → yol
+haritasına not.
 
 ---
 
-## Bulguları kalıcılaştırma (regresyon kapısı)
+## Tur C — Benchmark referanslarının literatür kontrolü
 
-Herhangi bir turda **somut bir hata** bulunursa:
+Amaç: kodun KENDİSİNİ değil, karşılaştırıldığı REFERANSLARI doğrulamak.
+Web erişimi olan bir yapay zekâya kopyalayıp yapıştırın:
 
-1. Kök nedeni düzelt.
-2. `verify.py`'ye, o hatayı bir daha yakalayacak **yeni bir kontrol** ekle
-   (mevcut kontrollerin biçimini izle: bir `*_check()` fonksiyonu, `PASS/FAIL`
-   basar, `main()` içinde hem tam hem `--no-engine` uygun yola bağlanır).
-3. Kontrol sayısını güncelle: `README.md` ve `docs/DOGRULAMA_RAPORU.md`.
-4. `python3 verify.py --fine` yeniden yeşil olana kadar tekrarla.
+```text
+Aşağıdaki referans değerlerin nükleer mühendislik literatüründeki
+kaynaklarını bul ve doğrula; her biri için kaynak (rapor no/DOI) ver:
 
-Bu döngü projenin temel kalite pratiğidir: her bulunan hata, kalıcı bir
-otomatik kontrole dönüşür.
+1) IAEA-2D PWR benchmark (ANL Benchmark Problem Book, problem 11-A2):
+   k_eff referansı 1.02959 mu?
+2) IAEA-3D PWR benchmark (problem 11): k_eff referansı 1.02903 mü?
+   (FeenoX ve ADPRES/KOMODO dokümanlarında da alıntılanır.)
+3) OECD/NEA C5G7 2-D MOX benchmark (NEA/NSC/DOC(2003)16): MCNP
+   referansı k_eff = 1.18655 mi?
+4) Keepin U-235 termal fisyon gecikmiş nötron verileri: toplam
+   β = 0.0065 civarı mı; 6 grup λ değerleri hangi kaynakta?
+5) U-235 2200 m/s kesitleri: σ_f ≈ 582.6 b, σ_a ≈ 680.9 b (ENDF/B ve
+   Atlas of Neutron Resonances ile uyumlu mu)?
+6) 15.5 MPa'da su doyma sıcaklığı ≈ 344.8 °C (IAPWS-IF97) doğru mu?
+
+Ayrıca: bu benchmark'lar için literatürde raporlanmış TİPİK difüzyon
+kodu sapmaları nedir? (Ör. C5G7'de difüzyonun yüzlerce pcm sapması
+normal midir?) Ekteki README'nin doğrulama tablosundaki sapmalar bu
+tipik aralıklarla tutarlı mı?
+```
 
 ---
 
-## Örnek: geçmişte bu yolla eklenmiş kontroller
+## Sonuçların yorumlanması
 
-- **Sürüm-lockstep** (`version_consistency_check`): motor/report/app sürüm
-  dizeleri birbirinden kaydığında sert FAIL. (Yayın öncesi motor 8.2 iken
-  arayüz 8.3 kayması bu kontrolle yakalandı.)
-- **QA parmakizi** (`integrity_guard_check`): mesh inceltme referansı korur,
-  fizik değişimi (pitch/kesit/BC) referansı geçersiz kılar.
-- **Akı kalibrasyonu** (`flux_calibration_check`): enerji kapanışı, raporda
-  ν̄ fazlalığı hatasına karşı.
-- **Denge yakıt güvenilirlik bayrağı** (`eqfuel_reliability_check`): güçlü
-  soğurucu (kontrol çubuğu) malzemesinde uyarı, düz yakıtta sessiz.
+| Sonuç | Anlamı | Aksiyon |
+|---|---|---|
+| Tur A tabloları birebir aynı | Yeniden üretilebilirlik kanıtlandı | Yayına engel yok |
+| Tur A'da FAIL | Ortam farkı ya da gerçek hata | Çıktıyı kaydet, ayıkla |
+| Tur B'de MAJOR bulgu | Fizik/kod hatası | Düzelt + verify.py'ye kontrol ekle |
+| Tur B'de yalnız kapsam notları | Bilinen sınırlar | README "Sınırlar" bölümüyle karşılaştır |
+| Tur C'de referans uyuşmazlığı | Yanlış referans değeri | Kaynağı güncelle, sapmaları yeniden hesapla |
+
+Bu projenin kalite döngüsü: **her bulunan hata, verify.py'de kalıcı bir
+kontrole dönüştürülür** — böylece aynı hata bir daha sessizce giremez.
+Bağımsız doğrulama bulgularını da aynı döngüye sokun.

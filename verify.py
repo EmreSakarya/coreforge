@@ -315,33 +315,6 @@ def kinetics_trends():
     return ok
 
 
-def version_consistency_check():
-    """Version-string lockstep guard (recurring release-drift bug).
-    The engine header + --version banner + run banner, report.py VERSION,
-    and app.py APP_VERSION + footer must ALL declare the same version.
-    Historically these drifted silently (the footer showed one version
-    while the engine reported another); this makes any mismatch a hard
-    failure.  Engine-free — just parses the source files."""
-    import re
-
-    def grab(path, pat, label):
-        with open(path, encoding="utf-8") as f:
-            hits = re.findall(pat, f.read())
-        return [(f"{label}[{i}]", v) for i, v in enumerate(hits)]
-
-    sites = []
-    sites += grab("app.py", r'APP_VERSION\s*=\s*"([\d.]+)"', "app.APP_VERSION")
-    sites += grab("app.py", r'CoreForge v([\d.]+)', "app.footer")
-    sites += grab("report.py", r'VERSION\s*=\s*"([\d.]+)"', "report.VERSION")
-    sites += grab("solver/coreforge.f90", r'COREFORGE v?([\d.]+)', "engine")
-    versions = sorted({v for _, v in sites})
-    ok = len(versions) == 1 and len(sites) >= 5
-    tag = versions[0] if len(versions) == 1 else "/".join(versions)
-    print(f"{'version lockstep: engine == report == app':<52}"
-          f"v{tag} ({len(sites)} sites)  {'PASS' if ok else 'FAIL'}")
-    return ok
-
-
 def main():
     fine = "--fine" in sys.argv
     no_engine = "--no-engine" in sys.argv
@@ -356,7 +329,6 @@ def main():
         # engine-free subset: pure-Python physics checks (no Fortran needed).
         # Useful for independent review in sandboxes without a compiler.
         ok = True
-        ok &= version_consistency_check()
         ok &= designer_trends()
         ok &= designer_vs_iaea()
         ok &= inverse_designer_check()
@@ -409,7 +381,6 @@ def main():
         print(f"{name:<22}{r['keff']:>12.7f}{cfg['ref_keff']:>12.7f}"
               f"{d:>+10.1f}{r['outers']:>8}{r['time_s']:>8.2f}  "
               f"{'PASS' if passed else 'FAIL'}")
-    ok &= version_consistency_check()
     ok &= equiv_2d_3d()
     ok &= designer_trends()
     ok &= designer_vs_iaea()

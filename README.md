@@ -70,7 +70,7 @@ FDM-not-nodal and educational-grade — the gap it fills is *interactivity
 | SMR/MMR odaklı nötronik analiz kodu | SMR-class 37-assembly kor **varsayılan açılış**; her parametre (zenginlik, geometri, BC, mesh) kullanıcı girdisi |
 | Normal işletmede akı, sıcaklık, üretilen enerji sunumu | ⚡ sonuç panelleri + **🔌 Operating point**: MW, W/cm³, n/cm²·s, assembly-MW; transient'te yakıt sıcaklığı |
 | Normalden sapmaların **zamana bağlı** hesabı | ⏱ **Point-kinetics transient**: rod ejection / ramp / scram, Doppler geri beslemeli, inhour-doğrulamalı |
-| Uluslararası benchmark ile doğrulama | IAEA-2D (−1.1 pcm), **IAEA-3D (−6.7 pcm)**, OECD C5G7, 5 analitik vaka — `verify.py` ile 25 otomatik kontrol |
+| Uluslararası benchmark ile doğrulama | IAEA-2D (−1.1 pcm), **IAEA-3D (−6.7 pcm)**, OECD C5G7, 5 analitik vaka — `verify.py` ile 24 otomatik kontrol |
 | Dokümantasyon: akış şeması, rehber, örnekler | `docs/AKIS_SEMASI.md` (5 Mermaid şema), `KULLANIM_KILAVUZU.md`, `TEORI_VE_YONTEM.md`, `DOGRULAMA_RAPORU.md`, `ORNEK_CALISMALAR.md` (7 uygulama), `BAGIMSIZ_DOGRULAMA.md`, `YAYINLAMA.md` |
 | Uygulama/prototip gösterimi | Canlı web arayüzü + tek dosyalık 📄 HTML rapor + proje kaydet/yükle |
 
@@ -112,7 +112,7 @@ profile shows the expected top-suppressed asymmetry, F_z ≈ 1.56).
 Reproduce everything:
 
 ```bash
-python3 verify.py          # 25 checks, ~15 s
+python3 verify.py          # 24 checks, ~15 s
 python3 verify.py --fine   # adds the fine-mesh rows
 ```
 
@@ -251,7 +251,7 @@ discrete burnable absorbers, equilibrium-Xe only, depletion is 2-D
 ifx -O3 -qopenmp solver/coreforge.f90 -o solver/coreforge   # Intel oneAPI
 # or: gfortran -O3 -fopenmp solver/coreforge.f90 -o solver/coreforge
 pip install -r requirements.txt
-python3 verify.py              # 25 automated checks (add --fine for more)
+python3 verify.py              # 24 automated checks (add --fine for more)
 streamlit run app.py
 ```
 

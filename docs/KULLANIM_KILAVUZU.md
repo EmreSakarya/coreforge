@@ -14,16 +14,22 @@ Gereksinimler: Linux/WSL2, bir Fortran derleyicisi (Intel `ifx` veya
 # 1) Fortran motorunu derle
 ifx -O3 -qopenmp solver/coreforge.f90 -o solver/coreforge
 #    (alternatif: gfortran -O3 -fopenmp ...)
+#    Bu adım atlanabilir: motor yoksa Python sürücüsü ilk kullanımda
+#    ifx/gfortran ile KENDİSİ derler (günlük: solver/build.log).
 
 # 2) Python bağımlılıkları
 pip install -r requirements.txt
 
 # 3) DOĞRULAMA — kuruluma her zaman bununla başlayın
-python3 verify.py            # 25 kontrol, ~10 s, hepsi PASS olmalı
+python3 verify.py            # 24 kontrol, ~10 s, hepsi PASS olmalı
+#    Fortran derleyicisi olmayan ortamda: python3 verify.py --no-engine
 
 # 4) Arayüzü başlat
 streamlit run app.py         # tarayıcı: http://localhost:8501
 ```
+
+> Canlı demo / bulut dağıtımı için `docs/YAYINLAMA.md`, bağımsız
+> doğrulama turu için `docs/BAGIMSIZ_DOGRULAMA.md`.
 
 `verify.py` çıktısındaki her satır, DOGRULAMA_RAPORU.md'de açıklanan bir
 benchmark/analitik kontroldür. Tek bir FAIL bile kurulumun sağlıksız
@@ -136,7 +142,7 @@ Girdi biçimi README'de belgelenmiştir (anahtar kelimeli, `#` yorum).
 
 | Belirti | Neden / çözüm |
 |---|---|
-| "Engine not built" | Fortran derlenmemiş — Kurulum adım 1 |
+| "Engine not built" | Otomatik derleme de başarısız — `solver/build.log`'a bakın; ifx/gfortran kurulu mu? (Kurulum adım 1) |
 | Solve çok yavaş | mesh kaydırıcılarını düşürün; küçük problemde "auto threads" açık kalsın |
 | Burnup "designer fuel yok" | 🧬'den yakıt ekleyin ya da eşdeğer yakıt iliştirin |
 | 3-D'de burnup kapalı | Bu sürümde tükenim radyal (2-D) modeldedir |

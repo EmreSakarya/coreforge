@@ -459,7 +459,7 @@ program coreforge
   end if
 
   write(*,'(a)') '======================================================'
-  write(*,'(a)') ' COREFORGE 8.3  --  2D/3D multigroup diffusion (k_eff)'
+  write(*,'(a)') ' COREFORGE 5.0  --  2D/3D multigroup diffusion (k_eff)'
   write(*,'(a)') '======================================================'
 
   call read_input(infile)

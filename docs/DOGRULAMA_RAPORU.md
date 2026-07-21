@@ -3,7 +3,7 @@
 Teknofest NDK şartnamesi gereği, yazılım **uluslararası kabul görmüş
 benchmark verileriyle** test edilmiştir. Bu rapordaki HER sayı, bu kod
 sistemiyle üretilmiş gerçek koşu sonucudur ve `python3 verify.py`
-komutuyla herkes tarafından yeniden üretilebilir (25 otomatik kontrol).
+komutuyla herkes tarafından yeniden üretilebilir (24 otomatik kontrol).
 
 ## 1 · Doğrulama metodolojisi
 
@@ -104,8 +104,9 @@ mertebede (−6.7 pcm) doğrulanmıştır.
 ## 7 · Yeniden üretilebilirlik
 
 ```bash
-python3 verify.py          # 25 kontrol (analitik+benchmark+trend)
-python3 verify.py --fine   # ince-mesh satırları dâhil
+python3 verify.py              # 24 kontrol (analitik+benchmark+trend)
+python3 verify.py --fine       # ince-mesh satırları dâhil
+python3 verify.py --no-engine  # Fortran'sız saf-Python fizik alt kümesi
 ```
 Her arayüz çözümü, girdi dosyası ve CSV'leriyle birlikte indirilebilir;
 📄 HTML raporu tüm konfigürasyon ve sonuçları tek dosyada arşivler.
