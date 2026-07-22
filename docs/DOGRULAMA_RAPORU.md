@@ -32,22 +32,28 @@ komutuyla herkes tarafından yeniden üretilebilir (24 otomatik kontrol).
 ### IAEA-2D PWR (ANL-7416, problem 11-A2) — referans k=1.02959
 | h [cm] | k_eff | Fark |
 |---|---|---|
-| 5 | 1.0292601 | −31.1 pcm |
-| 2 | 1.0295078 | −7.8 pcm |
-| 1 | 1.0295785 | **−1.1 pcm** |
+| 2 | 1.0295069 | −7.8 pcm |
+| 1 | 1.0295843 | **−0.5 pcm** |
+| 0.5 | 1.0296051 | +1.4 pcm |
+| h→0 (Richardson) | 1.0295975 | **+0.7 pcm, order 1.90** |
 
-Monoton h² yakınsaması; geometri resmî poligon tanımından 10 cm blok
-kafesine birebir aktarılmıştır.
+Monoton h² yakınsaması (v8.4 düzgün-yakınsamış çözücü ile order 1.90);
+geometri resmî poligon tanımından 10 cm blok kafesine birebir
+aktarılmıştır. (v8.3'teki "−1.1 pcm" değeri kısmen yanlış-yakınsama
+artıfaktıydı; bkz. §çözücü notu.)
 
 ### IAEA-3D PWR (ANL-7416, problem 11) — referans k=1.02903
 Tam x-y-z: 380 cm, eksenel reflektörler, 4 tam çubuk + üstten 80 cm
 batmış 5. çubuk (kutu koordinatları resmî tanımdan doğrulanmıştır).
 
-| h / dz [cm] | k_eff | Fark |
+| div / divz | k_eff | Fark |
 |---|---|---|
-| 5 / 10 | 1.028666 | −34.4 pcm |
-| 2.5 / 5 | 1.028897 | −12.6 pcm |
-| 2 / 4 | 1.028959 | **−6.7 pcm** |
+| 2 / 2 | 1.028666 | −34.4 pcm |
+| 4 / 4 | 1.028896 | **−12.7 pcm** (referansa doğru monoton) |
+
+(v8.3'teki "−6.7 pcm" değeri yanlış-yakınsama artıfaktıydı; v8.4 düzgün-
+yakınsamış çözücüyle gerçek değer −12.7 pcm ve mesh inceldikçe referansa
+monoton yaklaşır.)
 
 Eksenel güç profili beklenen üst-bastırılmış asimetriyi verir
 (F_z=1.56). **Çubuk-5 batırma taraması**: toplam değer ~−980 pcm,
@@ -91,20 +97,31 @@ vs S_N 2.35) — difüzyonun pin-ölçeği sınırının NİCEL kanıtı.
 | Boron letdown | 1 767→0 ppm, her adım k=1.0000 | monoton |
 | Otomatik çevrim sonu | 30.0 MWd/kgU = 789 EFPD | — |
 | Çevrimde güç düzleşmesi | F_xy 2.60 → 1.32 | klasik |
-| Fırlatma + Doppler @160 MW | tepe 2×P₀, +37 pcm'de öz-sınırlama | klasik |
+| REA (rod ejection, trip'li) | scram güç %4.2'ye kapatır | klasik |
+| ATWS (scram başarısız) | Doppler+MTC %167'de dengede tutar | scram değeri görünür |
 
 ## 6 · Bağımsız kod çaprazı
 
 Aynı ekipçe geliştirilen **ayrı S_N transport çözücüsü**
 (github.com/EmreSakarya/c5g7-2d-transport-benchmark, MCNP'ye −182 pcm)
 ile C5G7 üzerinde kod-koda karşılaştırma yapılmıştır; ayrıca IAEA-3D,
-ekibin bağımsız 3-D difüzyon kodunun (−7.9 pcm) sonucuyla aynı
-mertebede (−6.7 pcm) doğrulanmıştır.
+ekibin bağımsız 3-D difüzyon kodunun sonucuyla aynı mertebede
+(v8.4 düzgün-yakınsamış değer −12.7 pcm) doğrulanmıştır.
+
+### Çözücü notu (v8.4 — yanlış-yakınsama düzeltmesi)
+
+v8.3'te sabit iç-SOR süpürme sayısı ince mesh'te flux'u yakınsatmıyor,
+dış Δk-testi yavaş-sürünmede yanlış `converged` verebiliyordu (mesh
+inceldikçe k referanstan uzaklaşırdı). v8.4 iç çözümü **kaynak-normalize
+rezidu** ile adaptif yapar; mesh yakınsaması artık monoton order-2 ve
+`verify.py`'deki `convergence_check` bunu kalıcı olarak kilitler.
+Varsayılan-mesh ve C5G7 değerleri değişmedi; yalnız ince-mesh/Richardson
+değerleri düzgün-yakınsamış hâle getirildi.
 
 ## 7 · Yeniden üretilebilirlik
 
 ```bash
-python3 verify.py              # 24 kontrol (analitik+benchmark+trend)
+python3 verify.py              # 26 kontrol (analitik+benchmark+trend)
 python3 verify.py --fine       # ince-mesh satırları dâhil
 python3 verify.py --no-engine  # Fortran'sız saf-Python fizik alt kümesi
 ```

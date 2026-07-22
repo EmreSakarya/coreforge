@@ -315,6 +315,79 @@ def kinetics_trends():
     return ok
 
 
+def accident_checks():
+    """Full accident package (engine-free): reactor-protection trip →
+    auto-scram, two-node moderator (MTC) feedback, sqrt-T Doppler, and
+    the dollars/energy safety metrics.  Each sub-check is a hand-reasoned
+    physical expectation, not a re-run of the same formula."""
+    P0 = 160.0
+    rea = kinetics.simulate(P0_MW=P0, **kinetics.accident_preset("rea"))
+    atws = kinetics.simulate(P0_MW=P0, **kinetics.accident_preset("atws"))
+    rw = kinetics.simulate(P0_MW=P0,
+                           **kinetics.accident_preset("rod_withdrawal"))
+    # 1. REA: a real superprompt excursion, tripped, and shut down < 10 %
+    ok1 = (rea["prompt_critical"] and rea["t_trip"] is not None
+           and rea["peak_MW"] > 5 * P0
+           and rea["final_MW"] < 0.10 * P0
+           and rea["energy_MJ"] > 0.0)
+    # 2. ATWS: same ejection, scram FAILS → settles far above tripped REA
+    ok2 = (atws["final_MW"] > 5 * rea["final_MW"]
+           and np.isfinite(atws["peak_MW"]))
+    # 3. slow rod withdrawal is caught by the high-flux trip
+    ok3 = (rw["t_trip"] is not None and 0.0 < rw["t_trip"] < 45.0
+           and rw["final_MW"] < P0)
+    # 4. two-node Doppler+MTC pulls a +200 pcm step back toward zero net
+    fb = dict(alpha_pcm_K=-3.0, doppler_mode="sqrt", mcp_MJ_K=6.0,
+              alpha_mod_pcm_K=-15.0, mcp_mod_MJ_K=12.0,
+              tau_fm=6.0, tau_ms=3.0, T_sink=565.0)
+    pos = kinetics.simulate({"type": "step", "rho_pcm": 200.0},
+                            feedback=fb, t_end=40.0)
+    ok4 = pos["rho_pcm"][-1] < 100.0 and "T_mod" in pos
+    # 5. sqrt-T Doppler matches linear at a small excursion (coefficient
+    #    A = 2*alpha*sqrt(T0) is set so the slopes agree at T0)
+    base = dict(alpha_pcm_K=-3.0, mcp_MJ_K=6.0, tau_c=3.0, T0=580.0)
+    eL = kinetics.simulate({"type": "step", "rho_pcm": 100.0},
+                           feedback=base, t_end=60.0)
+    eS = kinetics.simulate({"type": "step", "rho_pcm": 100.0},
+                           feedback=dict(base, doppler_mode="sqrt"),
+                           t_end=60.0)
+    ok5 = abs(eS["final_T"] - eL["final_T"]) < 3.0 and np.isfinite(eS["peak_MW"])
+    # 6. prompt-critical flag: > beta True, < beta False
+    hi = kinetics.simulate({"type": "step", "rho_pcm": 800.0}, t_end=0.1)
+    lo = kinetics.simulate({"type": "step", "rho_pcm": 100.0}, t_end=1.0)
+    ok6 = hi["prompt_critical"] and not lo["prompt_critical"]
+    ok = ok1 and ok2 and ok3 and ok4 and ok5 and ok6
+    print(f"{'accident: trip/scram + MTC + sqrtD + $/energy':<52}"
+          f"REA {rea['final_MW']/P0*100:.1f}% vs ATWS {atws['final_MW']/P0*100:.0f}%  "
+          f"{'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def convergence_check():
+    """Guard against the fine-mesh FALSE-convergence failure mode.  With a
+    properly converged inner solve, refining IAEA-2D must converge
+    MONOTONICALLY toward the reference at ~2nd order, and the outer-
+    iteration count must stay mesh-bounded.  A too-small fixed inner-sweep
+    count lets the outer residual fall below tolerance while the flux is
+    still un-converged: the solver then reports 'converged' but k drifts
+    the WRONG way as the mesh refines and the outer count explodes.  This
+    check re-runs the refinement that exposed that bug."""
+    import math
+    ks, oo = [], []
+    for d in (5, 10, 20):
+        cfg = presets.preset_iaea2d(); cfg["div"] = d
+        r = runner.run_case(cfg)
+        ks.append(r["keff"]); oo.append(r["outers"])
+    mono = ks[0] < ks[1] < ks[2]
+    d1, d2 = ks[0] - ks[1], ks[1] - ks[2]
+    p = math.log(abs(d1 / d2), 2) if d2 else 0.0
+    bounded = max(oo) < 600
+    ok = mono and 1.6 <= p <= 2.4 and bounded
+    print(f"{'convergence: IAEA-2D monotone ~2nd order':<52}"
+          f"p={p:.2f}, outers<={max(oo)}  {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
 def main():
     fine = "--fine" in sys.argv
     no_engine = "--no-engine" in sys.argv
@@ -337,6 +410,7 @@ def main():
         ok &= thermal_checks()
         ok &= xenon_checks()
         ok &= kinetics_trends()
+        ok &= accident_checks()
         print("-" * 78)
         print("all engine-free checks passed" if ok
               else "SOME CHECKS FAILED")
@@ -394,6 +468,8 @@ def main():
     ok &= multicycle_check()
     ok &= rod_position_check()
     ok &= kinetics_trends()
+    ok &= accident_checks()
+    ok &= convergence_check()
     print("-" * 78)
     print("all checks passed" if ok else "SOME CHECKS FAILED")
     return 0 if ok else 1

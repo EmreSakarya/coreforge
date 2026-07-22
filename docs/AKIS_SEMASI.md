@@ -92,7 +92,7 @@ flowchart TB
     L -- bitti --> OUT["P(t), ρ(t), T(t), tepe güç,<br/>asimptotik periyot ⇄ inhour"]
 ```
 
-## 5 · Doğrulama zinciri (verify.py — 24 kontrol)
+## 5 · Doğrulama zinciri (verify.py — 26 kontrol)
 
 ```mermaid
 flowchart LR

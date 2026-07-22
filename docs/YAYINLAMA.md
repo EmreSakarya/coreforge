@@ -41,7 +41,7 @@ git config --global user.email "gemrek123@gmail.com"
 git init -b main
 git add .
 git status          # runs/, solver/coreforge, __pycache__ LİSTEDE OLMAMALI
-git commit -m "CoreForge v8.3: 2D/3D multigroup diffusion reactor analysis code"
+git commit -m "CoreForge v8.4: 2D/3D multigroup diffusion reactor analysis code"
 
 git remote add origin https://github.com/EmreSakarya/coreforge.git
 git push -u origin main
@@ -122,11 +122,11 @@ git push
 Kararlı her aşamada etiket atın:
 
 ```bash
-git tag -a v8.3 -m "CoreForge v8.3 — publication release"
-git push origin v8.3
+git tag -a v8.4 -m "CoreForge v8.4 — publication release"
+git push origin v8.4
 ```
 
-GitHub → Releases → **Draft a new release** ile v8.3 etiketinden bir
+GitHub → Releases → **Draft a new release** ile v8.4 etiketinden bir
 sürüm yayınlayıp `coreforge.zip`'i eklerseniz, kullanıcılar tek tıkla
 indirilebilir arşive kavuşur (Teknofest başvurusunda da temiz bir
 "prototip sürümü" referansı olur).

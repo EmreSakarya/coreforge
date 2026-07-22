@@ -21,7 +21,7 @@ ifx -O3 -qopenmp solver/coreforge.f90 -o solver/coreforge
 pip install -r requirements.txt
 
 # 3) DOĞRULAMA — kuruluma her zaman bununla başlayın
-python3 verify.py            # 24 kontrol, ~10 s, hepsi PASS olmalı
+python3 verify.py            # 26 kontrol, ~15 s, hepsi PASS olmalı
 #    Fortran derleyicisi olmayan ortamda: python3 verify.py --no-engine
 
 # 4) Arayüzü başlat

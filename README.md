@@ -69,8 +69,8 @@ FDM-not-nodal and educational-grade — the gap it fills is *interactivity
 |---|---|
 | SMR/MMR odaklı nötronik analiz kodu | SMR-class 37-assembly kor **varsayılan açılış**; her parametre (zenginlik, geometri, BC, mesh) kullanıcı girdisi |
 | Normal işletmede akı, sıcaklık, üretilen enerji sunumu | ⚡ sonuç panelleri + **🔌 Operating point**: MW, W/cm³, n/cm²·s, assembly-MW; transient'te yakıt sıcaklığı |
-| Normalden sapmaların **zamana bağlı** hesabı | ⏱ **Point-kinetics transient**: rod ejection / ramp / scram, Doppler geri beslemeli, inhour-doğrulamalı |
-| Uluslararası benchmark ile doğrulama | IAEA-2D (−1.1 pcm), **IAEA-3D (−6.7 pcm)**, OECD C5G7, 5 analitik vaka — `verify.py` ile 24 otomatik kontrol |
+| Normalden sapmaların **zamana bağlı** hesabı | ⏱ **Point-kinetics kaza dizileri**: rod ejection (RIA) / ramp / scram, **√T Doppler + moderator (MTC)** geri besleme, otomatik **reaktör-koruma trip → scram**, hazır **REA / ATWS / rod-withdrawal** presetleri, $ ve enerji-depozisyonu (cal/g), inhour-doğrulamalı |
+| Uluslararası benchmark ile doğrulama | IAEA-2D (−0.5 pcm, Richardson +0.7 pcm order-2), **IAEA-3D (−12.7 pcm, monoton)**, OECD C5G7, 5 analitik vaka — `verify.py` ile 26 otomatik kontrol |
 | Dokümantasyon: akış şeması, rehber, örnekler | `docs/AKIS_SEMASI.md` (5 Mermaid şema), `KULLANIM_KILAVUZU.md`, `TEORI_VE_YONTEM.md`, `DOGRULAMA_RAPORU.md`, `ORNEK_CALISMALAR.md` (7 uygulama), `BAGIMSIZ_DOGRULAMA.md`, `YAYINLAMA.md` |
 | Uygulama/prototip gösterimi | Canlı web arayüzü + tek dosyalık 📄 HTML rapor + proje kaydet/yükle |
 
@@ -100,19 +100,24 @@ $$-\nabla\!\cdot\!\big(D_g\nabla\phi_g\big) + \Sigma_{r,g}\,\phi_g
 | Homogeneous k∞, all-reflective | 2-D | 8×8 | 1.0857142 | 1.0857143 (analytic) | −0.0 pcm |
 | Bare square, 1 group, zero-flux | 2-D | 120×120 | 1.2610188 | 1.2610203 (analytic B²) | −0.1 pcm |
 | Bare cube, 1 group, zero-flux | **3-D** | 24×24×24 | 1.2490752 | 1.2489663 (analytic B²) | +3.2 pcm |
-| IAEA-2D PWR (ANL 11-A2) | 2-D | 170×170 (h = 1 cm) | 1.0295785 | 1.02959 | −1.1 pcm |
-| **IAEA-3D PWR (ANL problem 11)** | **3-D** | 85×85×95 (h = 2, dz = 4) | **1.0289590** | 1.02903 | **−6.7 pcm** |
+| IAEA-2D PWR (ANL 11-A2) | 2-D | 170×170 (h = 1 cm) | 1.0295843 | 1.02959 | −0.5 pcm |
+| **IAEA-3D PWR (ANL problem 11)** | **3-D** | 85×85×95 (h = 2, dz = 4) | **1.0288958** | 1.02903 | **−12.7 pcm** |
 | C5G7 MOX, pin-cell diffusion demo | 2-D | 102×102 (h = 0.63) | 1.1863920 | 1.18655 (MCNP transport) | −11 pcm * |
 
-IAEA-3D converges monotonically (−27 → −12.6 → **−6.7 pcm**) as the mesh
-refines — the full x-y-z benchmark with axial reflectors, four fully
-inserted rods and the famous **fifth rod inserted 80 cm from the top**
-(geometry cross-checked against the official description; the axial power
-profile shows the expected top-suppressed asymmetry, F_z ≈ 1.56).
-Reproduce everything:
+IAEA-3D converges toward the reference as the mesh refines (div 2 → 4:
+**−34.4 → −12.7 pcm**, monotone) — the full x-y-z benchmark with axial
+reflectors, four fully inserted rods and the famous **fifth rod inserted
+80 cm from the top** (geometry cross-checked against the official
+description; the axial power profile shows the expected top-suppressed
+asymmetry, F_z ≈ 1.56). The v8.4 solver uses a **residual-converged
+adaptive inner solve**: earlier versions could report `converged` while
+the fine-mesh flux was still un-converged, making the refined k drift the
+wrong way — now `verify.py`'s `convergence_check` locks in clean
+2nd-order (IAEA-2D: order 1.90, Richardson +0.7 pcm). Reproduce
+everything:
 
 ```bash
-python3 verify.py          # 24 checks, ~15 s
+python3 verify.py          # 26 checks, ~20 s
 python3 verify.py --fine   # adds the fine-mesh rows
 ```
 
@@ -228,8 +233,11 @@ discrete burnable absorbers, equilibrium-Xe only, depletion is 2-D
   per-layer flux browser, assembly power map, traverses, balance,
   CSV + 📄 standalone HTML report
 - 🔥 block-wise burnup with letdown and **auto end-of-cycle** (EFPD)
-- ⏱ **point-kinetics transients** (6 delayed groups, exact
-  matrix-exponential stepping, Doppler feedback, inhour-validated)
+- ⏱ **point-kinetics transients & design-basis accidents** (6 delayed
+  groups, exact matrix-exponential stepping, inhour-validated) with
+  **√T Doppler + moderator (MTC)** feedback, an automatic **reactor-
+  protection trip → scram**, canonical **REA / ATWS / rod-withdrawal**
+  presets, and $ / prompt-critical / energy-deposition (cal/g) metrics
 - ☁️ **xenon transients**: iodine pit depth/time and load-follow peaks,
   anchored to the equilibrium-Xe worth
 - 🌡 **closed-channel thermal-hydraulics**: coolant heat-up, clad &
@@ -251,7 +259,7 @@ discrete burnable absorbers, equilibrium-Xe only, depletion is 2-D
 ifx -O3 -qopenmp solver/coreforge.f90 -o solver/coreforge   # Intel oneAPI
 # or: gfortran -O3 -fopenmp solver/coreforge.f90 -o solver/coreforge
 pip install -r requirements.txt
-python3 verify.py              # 24 automated checks (add --fine for more)
+python3 verify.py              # 26 automated checks (add --fine for more)
 streamlit run app.py
 ```
 
@@ -302,9 +310,12 @@ stdout; `flux.csv` and `power.csv` (x, y, z, material, values).
   [C5G7 transport solver](https://github.com/EmreSakarya/c5g7-2d-transport-benchmark),
   −182 pcm vs MCNP).
 - FDM, not nodal: fine meshes instead of coarse-mesh polynomials.
-- Transients are **point kinetics** (6-group, lumped Doppler feedback),
-  not space-time kinetics — local effects during fast transients are
-  outside scope.
+- Transients are **point kinetics** (6-group, lumped two-node fuel+
+  moderator feedback with √T Doppler and an MTC), not space-time
+  kinetics — the spatial flux shape is frozen, so local effects during
+  fast transients (e.g. a rod-ejection flux tilt evolving in space) are
+  outside scope. The automatic scram uses a statically-computed bank
+  worth; decay heat is not modelled.
 - T-H is a **closed-channel post-processor** (average + hot assembly);
   the steady-state neutronics is not iterated against coolant/fuel
   temperature (no coupled T-H feedback loop), and boiling is flagged

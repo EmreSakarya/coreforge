@@ -1,5 +1,5 @@
 !=======================================================================
-!  COREFORGE v8.3
+!  COREFORGE v8.4
 !  2-D / 3-D multigroup neutron diffusion eigenvalue engine (k_eff)
 !  for arbitrary reactor cores.  NZ = 1 (default) reproduces the 2-D
 !  engine bit-for-bit; NZ > 1 solves full x-y-z cores with per-layer
@@ -40,7 +40,9 @@ module cf
   real(dp) :: omega  = 1.6_dp           ! SOR over-relaxation factor
   real(dp) :: tolk   = 1.0e-7_dp
   real(dp) :: tols   = 1.0e-5_dp
-  integer  :: maxout = 8000, ninner = 4
+  real(dp) :: intol  = 1.0e-4_dp        ! inner within-group convergence
+  integer  :: maxout = 8000, ninner = 2 ! ninner = minimum inner sweeps
+  integer  :: ninmax = 400              ! cap on adaptive inner sweeps
 
   ! ---- cross sections (g,mat) / (from,to,mat) ------------------------
   real(dp), allocatable :: xD(:,:), xSa(:,:), xNf(:,:), xChi(:,:), xSs(:,:,:)
@@ -136,6 +138,8 @@ contains
        case ('TOLK');   read(line,*,iostat=ios) key, tolk
        case ('TOLS');   read(line,*,iostat=ios) key, tols
        case ('NINNER'); read(line,*,iostat=ios) key, ninner
+       case ('NINMAX'); read(line,*,iostat=ios) key, ninmax
+       case ('INTOL');  read(line,*,iostat=ios) key, intol
        case ('MAXOUT'); read(line,*,iostat=ios) key, maxout
 
        case ('NMAT')
@@ -340,13 +344,17 @@ contains
     !$omp end parallel do
   end subroutine build_source
 
-  !  one red-black SOR sweep for group g (colour = parity of i+j+k)
-  subroutine rbsor(g)
-    integer, intent(in) :: g
+  !  one red-black SOR sweep for group g (colour = parity of i+j+k);
+  !  returns dmax = the largest absolute change in phi over this sweep,
+  !  so the caller can iterate the inner solve to convergence.
+  subroutine rbsor(g, dmax)
+    integer, intent(in)   :: g
+    real(dp), intent(out) :: dmax
     integer :: i, j, k, color, istart
-    real(dp) :: gs
+    real(dp) :: gs, dloc
+    dmax = 0.0_dp
     do color = 0, 1
-       !$omp parallel do collapse(2) private(i,j,k,istart,gs) schedule(static)
+       !$omp parallel do collapse(2) private(i,j,k,istart,gs,dloc) reduction(max:dmax) schedule(static)
        do k = 1, nz
           do j = 1, ny
              istart = 1 + mod(j+k+color, 2)
@@ -360,6 +368,8 @@ contains
                      + ct(i,j,k,g)*phi(i,j,min(k+1,nz),g) ) / dg(i,j,k,g)
                 gs = phi(i,j,k,g) + omega*(gs - phi(i,j,k,g))
                 if (gs < 0.0_dp) gs = 0.0_dp
+                dloc = abs(gs - phi(i,j,k,g))
+                if (dloc > dmax) dmax = dloc
                 phi(i,j,k,g) = gs
              end do
           end do
@@ -367,6 +377,38 @@ contains
        !$omp end parallel do
     end do
   end subroutine rbsor
+
+  !  max relative residual of the within-group linear system for group g:
+  !  ||src + (neighbour couplings) - dg*phi||_inf / ||src||_inf.
+  !  Unlike the per-sweep change, this is a true convergence measure — it
+  !  goes to zero only when the flux actually solves the group equation,
+  !  so the inner solver cannot stop while still crawling.  NOTE the norm
+  !  is the SOURCE scale (physical); normalising by dg*phi would divide by
+  !  ~1/h^2 at fine mesh and make the residual look spuriously small.
+  function grp_resid(g) result(rr)
+    integer, intent(in) :: g
+    real(dp) :: rr, resmax, smax, res
+    integer :: i, j, k
+    resmax = 0.0_dp;  smax = 0.0_dp
+    !$omp parallel do collapse(2) private(i,j,k,res) reduction(max:resmax,smax) schedule(static)
+    do k = 1, nz
+       do j = 1, ny
+          do i = 1, nx
+             res = src(i,j,k)                                        &
+                  + cw(i,j,k,g)*phi(max(i-1,1 ),j,k,g)                &
+                  + ce(i,j,k,g)*phi(min(i+1,nx),j,k,g)                &
+                  + cs(i,j,k,g)*phi(i,max(j-1,1 ),k,g)                &
+                  + cn(i,j,k,g)*phi(i,min(j+1,ny),k,g)                &
+                  + cb(i,j,k,g)*phi(i,j,max(k-1,1 ),g)                &
+                  + ct(i,j,k,g)*phi(i,j,min(k+1,nz),g)                &
+                  - dg(i,j,k,g)*phi(i,j,k,g)
+             if (abs(res)        > resmax) resmax = abs(res)
+             if (abs(src(i,j,k)) > smax  ) smax   = abs(src(i,j,k))
+          end do
+       end do
+    end do
+    rr = resmax / max(smax, 1.0e-30_dp)
+  end function grp_resid
 
   !--------------------------------------------------------------------
   subroutine balance_report(keff)
@@ -445,7 +487,7 @@ program coreforge
   character(len=256) :: infile, envs
   integer  :: outit, g, it, nfuel, iloc(3), outers, i, j, k
   integer(8) :: c0, c1, crate
-  real(dp) :: keff, knew, rk, rs, fsum, dre, rkm1, tsec, fxy
+  real(dp) :: keff, knew, rk, rs, fsum, dre, rkm1, tsec, fxy, dphi
   logical  :: conv
 
   if (command_argument_count() < 1) then
@@ -454,7 +496,7 @@ program coreforge
   end if
   call get_command_argument(1, infile)
   if (trim(infile) == '--version') then
-     write(*,'(a)') 'COREFORGE 8.3 (2D/3D multigroup diffusion engine)'
+     write(*,'(a)') 'COREFORGE 8.4 (2D/3D multigroup diffusion engine)'
      stop
   end if
 
@@ -499,8 +541,16 @@ program coreforge
      fisold = fis
      do g = 1, ng
         call build_source(g, keff)
-        do it = 1, ninner
-           call rbsor(g)
+        ! adaptive inner solve: sweep until the within-group linear
+        ! RESIDUAL is below intol (a true convergence measure) or the cap
+        ! is hit, with a floor of `ninner` sweeps.  A fixed, too-small
+        ! sweep count lets the OUTER residual fall below tol while the flux
+        ! is still un-converged -> a FALSE "converged" whose error GROWS
+        ! with mesh refinement.  Converging the inner solve makes the outer
+        ! rk/rs honest, restoring clean 2nd-order mesh convergence.
+        do it = 1, ninmax
+           call rbsor(g, dphi)
+           if (it >= ninner .and. grp_resid(g) <= intol) exit
         end do
      end do
      call build_fission(fsum)

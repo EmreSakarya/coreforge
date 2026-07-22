@@ -58,8 +58,8 @@ tarafsız biçimde doğrulamanı istiyorum.
    c) Testlerin KAPSAMADIĞI önemli bir fiziksel davranış görüyor musun?
 ```
 
-Beklenen sonuç: `all checks passed` (motorlu yolda 24 kontrol,
-motorsuz yolda 12 kontrol). Tek bir FAIL bile önemlidir — bana bildirin.
+Beklenen sonuç: `all checks passed` (motorlu yolda 26 kontrol,
+motorsuz yolda 13 kontrol). Tek bir FAIL bile önemlidir — bana bildirin.
 
 ---
 

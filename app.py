@@ -25,7 +25,7 @@ import thermal
 import ui
 import xslib
 
-APP_VERSION = "8.3"
+APP_VERSION = "8.4"
 
 st.set_page_config(page_title="CoreForge · reactor core simulator",
                    page_icon="⚛️", layout="wide",
@@ -1269,70 +1269,128 @@ with tabs[6]:
 # ⏱ Transient (point kinetics)
 # ----------------------------------------------------------------------
 with tabs[7]:
-    st.header("Time-dependent power — point reactor kinetics")
-    st.write("Reactivity events (rod ejection, ramps, scram) solved with "
-             "**6-delayed-group point kinetics** and optional Doppler "
-             "fuel-temperature feedback. Each output step applies the "
-             "**exact matrix-exponential** solution of the frozen-ρ "
-             "kinetics system — no stiffness issues. Validated against "
-             "the analytic **inhour equation** (< 1 % on the asymptotic "
-             "period, see verify.py). Reactivities can come straight "
-             "from the worth tools (e.g. CRA bank worth).")
+    st.header("Time-dependent power — point kinetics & accidents")
+    st.write("Reactivity events and full **design-basis accident "
+             "sequences** solved with **6-delayed-group point kinetics** "
+             "and an **exact matrix-exponential** step, with optional "
+             "**√T Doppler + moderator (MTC)** feedback and an automatic "
+             "**reactor-protection trip → scram**. Validated against the "
+             "analytic **inhour equation** and an accident-physics suite "
+             "in verify.py. Reactivities come straight from the worth "
+             "tools (e.g. CRA bank worth).")
+
+    _PRESETS = {"custom (manual)": None,
+                "REA — rod ejection (protected)": "rea",
+                "ATWS — rod ejection, scram fails": "atws",
+                "rod withdrawal (protected ramp)": "rod_withdrawal"}
+    t_preset = st.selectbox(
+        "scenario", list(_PRESETS), index=0,
+        help="Named presets load canonical design-basis accidents; "
+             "'custom' exposes every control below.")
+    is_custom = _PRESETS[t_preset] is None
+
     tc1, tc2, tc3, tc4 = st.columns(4)
     with tc1:
         t_P0 = st.number_input("initial power P₀ [MW]", 0.1, 5000.0, 160.0)
         t_Lam = st.number_input("Λ prompt gen. time [s]", 1e-6, 1e-3,
                                 2e-5, format="%.1e")
     with tc2:
-        t_kind = st.radio("event", ["step", "ramp", "scram"], index=0)
-        t_rho = st.number_input("external ρ [pcm]", -10000.0, 650.0,
-                                150.0, 10.0,
-                                help="β = 650 pcm — the UI caps positive "
-                                     "insertions below prompt-critical")
+        t_kind = st.radio("event", ["step", "ramp", "scram"], index=0,
+                          disabled=not is_custom)
+        t_rho = st.number_input(
+            "external ρ [pcm]", -10000.0, 2000.0, 150.0, 10.0,
+            disabled=not is_custom,
+            help="β = 650 pcm; ρ > β is prompt-critical — allowed here "
+                 "for rod-ejection studies")
     with tc3:
         t_aux = st.number_input(
             "ramp time / scram delay [s]", 0.0, 120.0, 5.0,
-            disabled=(t_kind == "step"))
-        t_end = st.number_input("simulate for [s]", 1.0, 900.0, 60.0)
+            disabled=(not is_custom or t_kind == "step"))
+        t_end = st.number_input("simulate for [s]", 0.1, 900.0, 15.0)
     with tc4:
-        t_fb = st.checkbox("Doppler feedback", True)
-        t_alpha = st.number_input("α_D [pcm/K]", -10.0, 0.0, -2.5, 0.1,
-                                  disabled=not t_fb)
-    with st.expander("fuel thermal model (feedback)"):
-        f1, f2, f3 = st.columns(3)
-        t_mcp = f1.number_input("fuel heat capacity M·cp [MJ/K]",
-                                0.5, 100.0, 6.0)
-        t_tau = f2.number_input("heat-removal time constant τ_c [s]",
-                                0.5, 60.0, 5.0)
-        t_T0 = f3.number_input("initial fuel temperature [K]",
-                               300.0, 1500.0, 580.0)
+        t_fb = st.checkbox("feedback", True, disabled=not is_custom)
+        t_alpha = st.number_input("Doppler α_D [pcm/K]", -10.0, 0.0, -3.0,
+                                  0.1, disabled=not (is_custom and t_fb))
+        t_sqrt = st.checkbox("√T Doppler", True,
+                             disabled=not (is_custom and t_fb))
+    with st.expander("feedback & reactor protection (custom)"):
+        g1, g2, g3 = st.columns(3)
+        t_mtc = g1.number_input("moderator α_M / MTC [pcm/K]", -80.0, 5.0,
+                                -15.0, disabled=not is_custom)
+        t_mcpf = g2.number_input("fuel heat cap. [MJ/K]", 0.5, 100.0, 6.0,
+                                 disabled=not is_custom)
+        t_mcpm = g3.number_input("moderator heat cap. [MJ/K]", 0.5, 200.0,
+                                 12.0, disabled=not is_custom)
+        h1, h2, h3 = st.columns(3)
+        t_trip_on = h1.checkbox("reactor trip → scram", True,
+                                disabled=not is_custom)
+        t_setpt = h2.number_input("high-flux trip [× nominal]", 1.01, 5.0,
+                                  1.18,
+                                  disabled=not (is_custom and t_trip_on))
+        t_scrw = h3.number_input("scram-bank worth [pcm]", -12000.0,
+                                 -500.0, -6000.0,
+                                 disabled=not (is_custom and t_trip_on))
+        t_fmass = st.number_input(
+            "fuel mass [kg]  (0 = skip cal/g)", 0.0, 1e5, 0.0,
+            disabled=not is_custom,
+            help="If set, the peak specific fuel-enthalpy rise is "
+                 "reported in cal/g — the RIA safety metric.")
 
-    if st.button("⏱  Run transient", type="primary"):
-        scen = {"type": t_kind, "rho_pcm": float(t_rho)}
-        if t_kind == "ramp":
-            scen["t_ramp"] = float(t_aux)
-        if t_kind == "scram":
-            scen["t_delay"] = float(t_aux)
-        fb = (dict(alpha_pcm_K=float(t_alpha), mcp_MJ_K=float(t_mcp),
-                   tau_c=float(t_tau), T0=float(t_T0)) if t_fb else None)
-        with st.spinner("integrating kinetics…"):
-            sim = kinetics.simulate(scen, t_end=float(t_end), dt=1e-3,
-                                    P0_MW=float(t_P0),
-                                    Lambda=float(t_Lam), feedback=fb)
-        ss.transient = (sim, scen, t_fb)
+    if st.button("⏱  Run transient / accident", type="primary"):
+        if not is_custom:
+            cfg = kinetics.accident_preset(_PRESETS[t_preset],
+                                           P0_MW=float(t_P0))
+            with st.spinner("integrating accident sequence…"):
+                sim = kinetics.simulate(P0_MW=float(t_P0),
+                                        Lambda=float(t_Lam), **cfg)
+            ss.transient = (sim, cfg["scenario"], True)
+        else:
+            scen = {"type": t_kind, "rho_pcm": float(t_rho)}
+            if t_kind == "ramp":
+                scen["t_ramp"] = float(t_aux)
+            if t_kind == "scram":
+                scen["t_delay"] = float(t_aux)
+            fb = None
+            if t_fb:
+                fb = dict(alpha_pcm_K=float(t_alpha), mcp_MJ_K=float(t_mcpf),
+                          alpha_mod_pcm_K=float(t_mtc),
+                          mcp_mod_MJ_K=float(t_mcpm),
+                          tau_fm=6.0, tau_ms=3.0, T_sink=565.0)
+                if t_sqrt:
+                    fb["doppler_mode"] = "sqrt"
+            trip = (dict(power_frac=float(t_setpt), delay_s=0.5,
+                         scram_rho_pcm=float(t_scrw), scram_ramp_s=2.0)
+                    if t_trip_on else None)
+            with st.spinner("integrating kinetics…"):
+                sim = kinetics.simulate(
+                    scen, t_end=float(t_end), dt=1e-3, P0_MW=float(t_P0),
+                    Lambda=float(t_Lam), feedback=fb, trip=trip,
+                    fuel_mass_kg=(float(t_fmass) or None))
+            ss.transient = (sim, scen, t_fb)
 
     if "transient" in ss:
         sim, scen, had_fb = ss.transient
-        k1c, k2c, k3c, k4c = st.columns(4)
-        k1c.metric("peak power", f"{sim['peak_MW']:.1f} MW")
-        k2c.metric("power at end", f"{sim['final_MW']:.2f} MW")
-        if "period_inhour_s" in sim:
-            k3c.metric("asymptotic period (inhour)",
-                       f"{sim['period_inhour_s']:.1f} s")
+        m = st.columns(4)
+        m[0].metric("peak power", f"{sim['peak_MW']:.1f} MW",
+                    f"{sim['peak_MW']/sim['P_MW'][0]:.0f}× nom"
+                    if sim["P_MW"][0] > 0 else None)
+        m[1].metric("power at end", f"{sim['final_MW']:.2f} MW")
+        if sim.get("t_trip") is not None:
+            m[2].metric("reactor trip", f"{sim['t_trip']:.2f} s")
+        elif "period_inhour_s" in sim:
+            m[2].metric("asymptotic period", f"{sim['period_inhour_s']:.1f} s")
         else:
-            k3c.metric("net ρ at end", f"{sim['rho_pcm'][-1]:+.0f} pcm")
-        k4c.metric("fuel T at end", f"{sim['final_T']:.0f} K"
-                   if had_fb else "—")
+            m[2].metric("net ρ at end", f"{sim['rho_pcm'][-1]:+.0f} pcm")
+        m[3].metric("energy released", f"{sim['energy_MJ']:.0f} MJ")
+        s = st.columns(4)
+        s[0].metric("external reactivity", f"{sim['rho_dollars_ext']:+.2f} $")
+        s[1].metric("prompt-critical",
+                    "YES ⚠️" if sim["prompt_critical"] else "no")
+        if had_fb:
+            s[2].metric("peak fuel ΔT", f"{sim['dT_fuel_peak']:.0f} K")
+        if "enthalpy_cal_g" in sim:
+            s[3].metric("peak fuel enthalpy",
+                        f"{sim['enthalpy_cal_g']:.0f} cal/g")
         pa, pb = st.columns(2)
         with pa:
             st.plotly_chart(plots.traverse_fig(
@@ -1344,14 +1402,19 @@ with tabs[7]:
             if had_fb:
                 series.append(("T_fuel − T₀ [K]",
                                sim["T_fuel"] - sim["T_fuel"][0]))
+                if "T_mod" in sim:
+                    series.append(("T_mod − T₀ [K]",
+                                   sim["T_mod"] - sim["T_mod"][0]))
             st.plotly_chart(plots.traverse_fig(
-                sim["t"], series, title="Reactivity & fuel temperature",
+                sim["t"], series, title="Reactivity & temperatures",
                 xlabel="t [s]", ylabel=""), width="stretch")
-        st.caption("Point-kinetics approximation (spatial shape frozen); "
-                   "6-group U-235 delayed data, β = 650 pcm. Decay heat "
-                   "is NOT modelled — post-scram power is the kinetics "
-                   "level only. Positive insertions are limited to below "
-                   "prompt-critical by the UI.")
+        st.caption("Point-kinetics approximation (spatial flux shape "
+                   "frozen — space-time kinetics is on the roadmap). "
+                   "6-group U-235 delayed data, β = 650 pcm. Automatic "
+                   "scram = statically-computed bank worth inserted over "
+                   "the drop time; decay heat is NOT modelled. RIA cal/g "
+                   "uses the lumped fuel node (integral estimate, not a "
+                   "radial enthalpy profile).")
 
     st.divider()
     st.subheader("☁️ Xenon-135 transient (iodine pit / load-follow)")
@@ -1603,7 +1666,7 @@ with tabs[8]:
             st.error(str(e))
 
 st.divider()
-st.caption("CoreForge v8.3 — SMR/MMR neutronics design & analysis code "
+st.caption("CoreForge v8.4 — SMR/MMR neutronics design & analysis code "
            "system · Fortran 2-D/3-D multigroup diffusion (red-black SOR, "
            "OpenMP) · 3-D core builder + project save/load · IAEA-2D −1 "
            "pcm · IAEA-3D −7 pcm · C5G7 demo · fuel designer + inverse "
