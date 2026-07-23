@@ -11,7 +11,7 @@ import plots
 import presets
 import runner
 
-VERSION = "8.4"
+VERSION = "8.5"
 
 _CSS = """
 body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;

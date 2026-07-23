@@ -17,6 +17,7 @@ import streamlit as st
 
 import burnup
 import kinetics
+import livecore
 import plots
 import presets
 import report
@@ -25,7 +26,7 @@ import thermal
 import ui
 import xslib
 
-APP_VERSION = "8.4"
+APP_VERSION = "8.5"
 
 st.set_page_config(page_title="CoreForge · reactor core simulator",
                    page_icon="⚛️", layout="wide",
@@ -61,6 +62,9 @@ def load_preset(p):
     ss.pop("transient", None)   # never survive a preset change
     ss.pop("xet", None)
     ss.pop("cycles", None)
+    ss.pop("lc_cache", None)    # live-core cache/results are per-core too
+    ss.pop("lc_last", None)
+    ss.pop("lc_hist", None)
 
 
 def current_fp():
@@ -317,7 +321,7 @@ ui.hero(eng is not None, APP_VERSION,
 tabs = st.tabs(["📚 Benchmarks", "🧬 Fuel designer", "🧪 Materials",
                 "🧱 Core builder", "⚡ Solve & results",
                 "🌡 Thermal-hydraulics", "🔥 Burnup",
-                "⏱ Transient", "🔧 Physics tools"])
+                "⏱ Transient", "🔧 Physics tools", "🕹 Live core"])
 
 # ----------------------------------------------------------------------
 # 📚 Benchmarks
@@ -1665,13 +1669,230 @@ with tabs[8]:
         except Exception as e:
             st.error(str(e))
 
+# ----------------------------------------------------------------------
+# 🕹 Live core — interactive rods / boron / enrichment with instant k
+# ----------------------------------------------------------------------
+with tabs[9]:
+    st.header("Live core — move rods, change boron / enrichment, watch k")
+    st.write("An interactive console for the **currently loaded core** "
+             "(pick any benchmark in 📚 or build your own in 🧱). Every "
+             "control below re-solves the real diffusion eigenvalue "
+             "problem — nothing is interpolated — and the maps, the 3-D "
+             "view and k_eff update immediately. The controls adapt to "
+             "the core: rod-5 depth appears for IAEA-3D, rod banks for "
+             "cores loaded with CRA/rodded materials, boron & enrichment "
+             "for physics-generated (designer) fuels, and a generic "
+             "absorber for plain benchmark constants.")
+
+    base_cfg = current_cfg()
+    lc = livecore.describe_controls(base_cfg, ss.get("rod_meta"))
+    lcL, lcR = st.columns([5, 7], gap="large")
+
+    with lcL:
+        st.subheader(f"⚙ {ss.preset_title}")
+        lc_fast = st.checkbox(
+            "fast mesh (live response)", True, key=f"lc_fast_{REV}",
+            help="Solves on a coarsened mesh so every change answers in a "
+                 "fraction of a second. Uncheck to use the sidebar mesh.")
+
+        lc_depth = None
+        if lc["has_rod5"]:
+            dzq = float(ss.axial["dz"])
+            lc_depth = st.slider(
+                "rod-5 insertion depth [cm from core top]",
+                0.0, float(lc["core_h"]), 80.0, step=dzq,
+                key=f"lc_d5_{REV}")
+            st.caption(f"= **{100.0*lc_depth/lc['core_h']:.0f}%** inserted "
+                       f"(quantised to Δz = {dzq:.0f} cm). The four other "
+                       f"rods of the benchmark stay fully inserted.")
+
+        lc_banks = {}
+        for (rid, uid, label) in lc["swaps"]:
+            lc_banks[(rid, uid)] = st.checkbox(
+                f"bank inserted · {label}", True,
+                key=f"lc_bank_{rid}_{REV}",
+                help=f"Unchecking replaces material {rid} by its unrodded "
+                     f"partner (id {uid}) everywhere — a full bank "
+                     f"withdrawal.")
+
+        lc_ppm = None
+        if lc["designer"]:
+            lc_ppm = st.number_input(
+                "soluble boron [ppm]", 0.0, 5000.0,
+                float(lc["ppm_now"] or 0.0), 50.0, key=f"lc_ppm_{REV}",
+                help="Rebuilds every designer material's cross sections "
+                     "at this concentration (exact pin-cell physics).")
+
+        lc_enr = {}
+        if lc["fresh_fuels"]:
+            with st.expander("enrichment per designer fuel [w/o U-235]"):
+                for mid in lc["fresh_fuels"]:
+                    m0 = base_cfg["materials"][mid - 1]
+                    e0 = float(m0["designer"]["enrich"])
+                    lc_enr[mid] = st.number_input(
+                        m0["name"], 0.5, 12.0, e0, 0.1,
+                        key=f"lc_e_{mid}_{REV}")
+
+        lc_dsa = 0.0
+        if not lc["designer"]:
+            lc_dsa = st.number_input(
+                "generic absorber ΔΣa, last group [10⁻³ cm⁻¹]",
+                -20.0, 50.0, 0.0, 0.5, key=f"lc_dsa_{REV}",
+                help="Benchmark constants carry no explicit boron — this "
+                     "adds a uniform boron-like poison to every fuel "
+                     "material's thermal absorption.") * 1e-3
+
+        lc_auto = st.checkbox("solve on every change", True,
+                              key=f"lc_auto_{REV}")
+        lc_go = lc_auto or st.button("🕹 Solve now", type="primary",
+                                     disabled=eng is None)
+
+    # ---- assemble the modified configuration --------------------------
+    lc_cfg = base_cfg
+    lc_tags = []
+    if lc_fast:
+        lc_cfg = copy.deepcopy(lc_cfg)
+        lc_cfg["div"] = min(lc_cfg["div"], 1 if lc_cfg.get("axial") else 2)
+        if lc_cfg.get("axial"):
+            lc_cfg["axial"]["divz"] = 1
+    try:
+        if lc["has_rod5"] and lc_depth is not None:
+            lc_cfg = livecore.rod5_cfg(lc_cfg, ss.rod_meta, lc_depth)
+            lc_tags.append(f"rod5 {lc_depth:.0f}cm")
+        for (rid, uid), inserted in lc_banks.items():
+            if not inserted:
+                lc_cfg = livecore.bank_out_cfg(lc_cfg, rid, uid)
+                lc_tags.append(f"bank{rid} out")
+        if lc_enr:
+            for mid, e in lc_enr.items():
+                e0 = float(base_cfg["materials"][mid - 1]["designer"]["enrich"])
+                if abs(e - e0) > 1e-9:
+                    lc_cfg = livecore.enrichment_cfg(lc_cfg, mid, e,
+                                                     ppm=lc_ppm)
+                    lc_tags.append(f"e{mid}={e:.2f}%")
+        if lc_ppm is not None:
+            lc_cfg, _ = livecore.boron_cfg(lc_cfg, lc_ppm)
+            lc_tags.append(f"{lc_ppm:.0f} ppm")
+        if abs(lc_dsa) > 0:
+            lc_cfg = livecore.poison_cfg(lc_cfg, lc_dsa)
+            lc_tags.append(f"ΔΣa {lc_dsa*1e3:+.1f}e-3")
+        lc_err = None
+    except Exception as exc:
+        lc_err = str(exc)
+
+    # ---- solve (cached on the physics fingerprint) --------------------
+    if lc_err:
+        st.error(lc_err)
+    elif lc_go and eng is not None:
+        divz_key = (int(lc_cfg["axial"].get("divz", 1))
+                    if lc_cfg.get("axial") else 0)
+        lc_key = (presets.fingerprint_of(lc_cfg), lc_cfg["div"], divz_key)
+        cache = ss.setdefault("lc_cache", {})
+        if lc_key in cache:
+            lc_res = cache[lc_key]
+        else:
+            with st.spinner("solving…"):
+                lc_res = runner.run_case(lc_cfg, threads=threads)
+            cache[lc_key] = lc_res
+            while len(cache) > 24:
+                cache.pop(next(iter(cache)))
+        if ss.get("lc_base_rev") != REV:
+            ss.lc_base_rev = REV
+            ss.lc_base_k = lc_res["keff"]
+            ss.lc_hist = []
+        hist = ss.setdefault("lc_hist", [])
+        if not hist or hist[-1]["key"] != lc_key:
+            hist.append(dict(key=lc_key, keff=lc_res["keff"],
+                             note=", ".join(lc_tags) or "as loaded"))
+            del hist[:-30]
+        ss.lc_last = (lc_key, lc_res, lc_cfg)
+
+    if ss.get("lc_last") and not lc_err:
+        _, lc_res, lc_scfg = ss.lc_last
+        with lcL:
+            k = lc_res["keff"]
+            m1, m2 = st.columns(2)
+            m1.metric("k_eff", f"{k:.6f}",
+                      f"{runner.rho_pcm(k):+,.0f} pcm vs critical")
+            dbase = (runner.rho_pcm(k) - runner.rho_pcm(ss.lc_base_k)
+                     if ss.get("lc_base_rev") == REV else 0.0)
+            m2.metric("Δρ vs baseline", f"{dbase:+,.0f} pcm",
+                      help="Baseline = the first solve after loading this "
+                           "core. Rod/boron/enrichment worths read "
+                           "directly from here.")
+            m3, m4 = st.columns(2)
+            m3.metric("F_xy", f"{lc_res['fxy']:.3f}")
+            if lc_scfg.get("axial"):
+                m4.metric("F_z", f"{lc_res.get('fz', 1.0):.3f}")
+            if not lc_res.get("converged", True):
+                st.warning("not converged — refine mesh or relax controls")
+            hist = ss.get("lc_hist", [])
+            if len(hist) > 1:
+                st.plotly_chart(plots.traverse_fig(
+                    list(range(1, len(hist) + 1)),
+                    [("k_eff", [h["keff"] for h in hist])],
+                    title="k over your changes", xlabel="change #",
+                    ylabel="k_eff"), width="stretch")
+                with st.expander("change log"):
+                    st.table(pd.DataFrame(
+                        [dict(n=i + 1, k=f"{h['keff']:.6f}",
+                              change=h["note"])
+                         for i, h in enumerate(hist)]))
+
+        with lcR:
+            lc_bp = runner.block_powers(lc_res, lc_scfg)
+            lc_is3d = bool(lc_scfg.get("axial"))
+            lc_view = st.radio("view", ["🧊 3-D core", "🗺 2-D maps"],
+                               horizontal=True, key=f"lc_view_{REV}",
+                               label_visibility="collapsed")
+            if lc_view.startswith("🧊"):
+                if lc_is3d:
+                    ch = (float(lc["core_h"]) if lc["has_rod5"] else
+                          sum(int(z["layers"]) for z in
+                              lc_scfg["axial"]["zones"])
+                          * float(lc_scfg["axial"]["dz"]))
+                    rods = (livecore.rod_geometry(ss.rod_meta, lc_depth)
+                            if lc["has_rod5"] else [])
+                    st.plotly_chart(plots.core3d_fig(
+                        lc_bp, lc_scfg["pitch"], core_h=ch, rods=rods,
+                        title="Assembly towers · colour = P/P̄ · dark "
+                              "columns = rods"), width="stretch")
+                else:
+                    st.plotly_chart(plots.core3d_fig(
+                        lc_bp, lc_scfg["pitch"], core_h=None,
+                        title="Power towers · height & colour = P/P̄"),
+                        width="stretch")
+                    st.caption("2-D core: the tower HEIGHT is the "
+                               "assembly power P/P̄ (no axial dimension "
+                               "exists in this model).")
+            else:
+                p1, p2 = st.columns(2)
+                with p1:
+                    st.plotly_chart(plots.material_map_fig(
+                        lc_res["mat_fine"], lc_scfg["materials"],
+                        lc_res["x"], lc_res["y"]), width="stretch")
+                with p2:
+                    st.plotly_chart(plots.block_power_fig(
+                        lc_bp, lc_scfg["pitch"]), width="stretch")
+            if lc["has_rod5"]:
+                st.plotly_chart(plots.rod_axial_fig(
+                    float(lc["core_h"]),
+                    [("rod 1-4 (bank)", float(lc["core_h"]))]
+                    + [("rod 5", float(lc_depth))],
+                    dz=float(lc_scfg["axial"]["dz"])), width="stretch")
+    elif not lc_err:
+        st.info("Adjust a control (or press Solve) to bring the core "
+                "to life." if eng is not None else
+                "Engine not available — build it first (see sidebar).")
+
 st.divider()
-st.caption("CoreForge v8.4 — SMR/MMR neutronics design & analysis code "
+st.caption("CoreForge v8.5 — SMR/MMR neutronics design & analysis code "
            "system · Fortran 2-D/3-D multigroup diffusion (red-black SOR, "
-           "OpenMP) · 3-D core builder + project save/load · IAEA-2D −1 "
-           "pcm · IAEA-3D −7 pcm · C5G7 demo · fuel designer + inverse "
-           "matching · burnup with letdown & auto-EOC · point-kinetics "
-           "transients (inhour-validated) · operating-point absolute units "
-           "· QA integrity guard (benchmark fingerprinting) · versioned "
-           "HTML reports with traceability · Türkçe dokümantasyon: docs/ "
-           "· MIT license")
+           "OpenMP) · 3-D core builder + project save/load · live "
+           "interactive core (rods/boron/enrichment) · IAEA-2D −0.5 pcm "
+           "· IAEA-3D −13 pcm (monotone) · C5G7 demo · fuel designer + "
+           "inverse matching · burnup with letdown & auto-EOC · point-"
+           "kinetics accident sequences (trip/scram, inhour-validated) · "
+           "operating-point absolute units · QA integrity guard "
+           "(benchmark fingerprinting) · versioned HTML reports with "
+           "traceability · Türkçe dokümantasyon: docs/ · MIT license")

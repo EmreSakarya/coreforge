@@ -70,7 +70,7 @@ FDM-not-nodal and educational-grade — the gap it fills is *interactivity
 | SMR/MMR odaklı nötronik analiz kodu | SMR-class 37-assembly kor **varsayılan açılış**; her parametre (zenginlik, geometri, BC, mesh) kullanıcı girdisi |
 | Normal işletmede akı, sıcaklık, üretilen enerji sunumu | ⚡ sonuç panelleri + **🔌 Operating point**: MW, W/cm³, n/cm²·s, assembly-MW; transient'te yakıt sıcaklığı |
 | Normalden sapmaların **zamana bağlı** hesabı | ⏱ **Point-kinetics kaza dizileri**: rod ejection (RIA) / ramp / scram, **√T Doppler + moderator (MTC)** geri besleme, otomatik **reaktör-koruma trip → scram**, hazır **REA / ATWS / rod-withdrawal** presetleri, $ ve enerji-depozisyonu (cal/g), inhour-doğrulamalı |
-| Uluslararası benchmark ile doğrulama | IAEA-2D (−0.5 pcm, Richardson +0.7 pcm order-2), **IAEA-3D (−12.7 pcm, monoton)**, OECD C5G7, 5 analitik vaka — `verify.py` ile 26 otomatik kontrol |
+| Uluslararası benchmark ile doğrulama | IAEA-2D (−0.5 pcm, Richardson +0.7 pcm order-2), **IAEA-3D (−12.7 pcm, monoton)**, OECD C5G7, 5 analitik vaka — `verify.py` ile 27 otomatik kontrol |
 | Dokümantasyon: akış şeması, rehber, örnekler | `docs/AKIS_SEMASI.md` (5 Mermaid şema), `KULLANIM_KILAVUZU.md`, `TEORI_VE_YONTEM.md`, `DOGRULAMA_RAPORU.md`, `ORNEK_CALISMALAR.md` (7 uygulama), `BAGIMSIZ_DOGRULAMA.md`, `YAYINLAMA.md` |
 | Uygulama/prototip gösterimi | Canlı web arayüzü + tek dosyalık 📄 HTML rapor + proje kaydet/yükle |
 
@@ -117,7 +117,7 @@ wrong way — now `verify.py`'s `convergence_check` locks in clean
 everything:
 
 ```bash
-python3 verify.py          # 26 checks, ~20 s
+python3 verify.py          # 27 checks, ~25 s
 python3 verify.py --fine   # adds the fine-mesh rows
 ```
 
@@ -251,6 +251,16 @@ discrete burnable absorbers, equilibrium-Xe only, depletion is 2-D
   the stated core thermal power
 - 🔧 tools: material-swap worth, **rod-insertion S-curve (3-D)**,
   critical boron [ppm], generic ΔΣa criticality search
+- 🕹 **Live core**: an interactive console for ANY loaded core —
+  slide **rod-5's depth** (IAEA-3D), toggle auto-detected **CRA banks**
+  in/out, dial **soluble boron / per-fuel enrichment** (designer cores)
+  or a generic absorber, and every change **re-solves the real
+  eigenvalue problem** (fast coarse mesh, fingerprint-cached) with
+  instant k_eff, Δρ-vs-baseline, a **3-D assembly-tower view** (colour =
+  P/P̄, dark columns = rods at their true depth), an axial rod diagram
+  and a change log. Mechanisms live in `livecore.py`; their physics
+  (bank worth +, deeper rod ↓k, boron ↓k, enrichment ↑k) is locked in by
+  `verify.py`.
 - 🗒️ session run history · 🧵 auto thread selection
 
 ## Build & run (WSL / Linux)
@@ -259,7 +269,7 @@ discrete burnable absorbers, equilibrium-Xe only, depletion is 2-D
 ifx -O3 -qopenmp solver/coreforge.f90 -o solver/coreforge   # Intel oneAPI
 # or: gfortran -O3 -fopenmp solver/coreforge.f90 -o solver/coreforge
 pip install -r requirements.txt
-python3 verify.py              # 26 automated checks (add --fine for more)
+python3 verify.py              # 27 automated checks (add --fine for more)
 streamlit run app.py
 ```
 

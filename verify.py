@@ -388,6 +388,42 @@ def convergence_check():
     return ok
 
 
+def livecore_checks():
+    """Live-core control mechanisms (engine, coarse meshes): each control
+    must move k in the physically required direction.
+      bank-out worth positive (IAEA-2D 3->2 swap raises k);
+      generic poison strictly lowers k, monotone in dose;
+      soluble boron lowers k on the designer core (exact xslib rebuild);
+      higher enrichment raises k;
+      deeper rod-5 strictly lowers k on IAEA-3D (S-curve direction);
+      the bank auto-detector finds the IAEA pair (rodded 3 -> fuel 2)."""
+    import livecore
+    c2 = presets.preset_iaea2d(); c2["div"] = 2
+    swaps = livecore.rod_swap_candidates(c2["materials"])
+    ok1 = (3, 2) in [(a, b) for a, b, _ in swaps]
+    k_in = runner.run_case(c2)["keff"]
+    k_out = runner.run_case(livecore.bank_out_cfg(c2, 3, 2))["keff"]
+    ok2 = k_out > k_in + 1e-5
+    kp1 = runner.run_case(livecore.poison_cfg(c2, 1e-3))["keff"]
+    kp2 = runner.run_case(livecore.poison_cfg(c2, 2e-3))["keff"]
+    ok3 = k_in > kp1 > kp2
+    cd = presets.preset_designer(); cd["div"] = 2
+    kd = runner.run_case(cd)["keff"]
+    kb = runner.run_case(livecore.boron_cfg(cd, 1800.0)[0])["keff"]
+    ke = runner.run_case(livecore.enrichment_cfg(cd, 1, 2.6))["keff"]
+    ok4 = kb < kd < ke
+    c3 = presets.preset_iaea3d(); c3["div"] = 1
+    kr = [runner.run_case(livecore.rod5_cfg(c3, c3["rod_meta"], d))["keff"]
+          for d in (0.0, 170.0, 340.0)]
+    ok5 = kr[0] > kr[1] > kr[2]
+    ok = ok1 and ok2 and ok3 and ok4 and ok5
+    print(f"{'live-core: bank/poison/boron/enrich/rod5 physics':<52}"
+          f"bank {runner.rho_pcm(k_out)-runner.rho_pcm(k_in):+.0f} pcm, "
+          f"rod5 {runner.rho_pcm(kr[2])-runner.rho_pcm(kr[0]):+.0f} pcm  "
+          f"{'PASS' if ok else 'FAIL'}")
+    return ok
+
+
 def main():
     fine = "--fine" in sys.argv
     no_engine = "--no-engine" in sys.argv
@@ -470,6 +506,7 @@ def main():
     ok &= kinetics_trends()
     ok &= accident_checks()
     ok &= convergence_check()
+    ok &= livecore_checks()
     print("-" * 78)
     print("all checks passed" if ok else "SOME CHECKS FAILED")
     return 0 if ok else 1

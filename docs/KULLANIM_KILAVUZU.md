@@ -21,7 +21,7 @@ ifx -O3 -qopenmp solver/coreforge.f90 -o solver/coreforge
 pip install -r requirements.txt
 
 # 3) DOĞRULAMA — kuruluma her zaman bununla başlayın
-python3 verify.py            # 26 kontrol, ~15 s, hepsi PASS olmalı
+python3 verify.py            # 27 kontrol, ~15 s, hepsi PASS olmalı
 #    Fortran derleyicisi olmayan ortamda: python3 verify.py --no-engine
 
 # 4) Arayüzü başlat
@@ -122,6 +122,24 @@ Alt bölümde **☁️ Xenon transient**: güç değişimi sonrası Xe-135 reakt
 3. **Kritik çubuk pozisyonu (3-D)** — hedef k için batma derinliği (bisection)
 4. **Kritik boron araması [ppm]** — designer korlarda k=1 için boron
 5. **Genel ΔΣa kritiklik araması** — herhangi bir malzeme/grupta
+
+### 🕹 Live core (interaktif kor konsolu)
+Yüklü olan HER kor için (benchmark veya kendi tasarımın) canlı konsol:
+- **Çubuk-5 derinliği** (IAEA-3D): kaydırıcıyla cm/% gir — kor
+  görünümünde çubuk kolonu iner/çıkar, k anında yeniden çözülür.
+- **Bank içeri/dışarı**: CRA'lı korlarda (SMR, IAEA) rodlu malzeme ve
+  rodsuz eşi OTOMATİK bulunur; kutucukla bankı çek/tak.
+- **Boron [ppm] ve zenginlik [w/o]** (designer korlar): kesitler gerçek
+  pin-hücre fiziğiyle yeniden üretilir.
+- **Genel soğurucu ΔΣa** (benchmark sabitli korlar): boron-benzeri
+  tekdüze zehir.
+Her değişiklik GERÇEK özdeğer problemini çözer (hızlı kaba mesh,
+parmak-izi önbellekli); k_eff, taban-çizgisine göre Δρ, F_xy/F_z,
+**3-B assembly-kule görünümü** (renk = güç, koyu kolonlar = çubuklar),
+eksenel çubuk şeması ve değişiklik günlüğü anında güncellenir.
+Mekanizmalar `livecore.py`'dedir ve fizik yönleri (bank değeri pozitif,
+derin çubuk k'yı düşürür, boron k'yı düşürür, zenginlik k'yı yükseltir)
+verify.py ile kalıcı kontrol altındadır.
 
 ## 4 · Proje kaydet/yükle
 
