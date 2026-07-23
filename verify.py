@@ -416,10 +416,26 @@ def livecore_checks():
     kr = [runner.run_case(livecore.rod5_cfg(c3, c3["rod_meta"], d))["keff"]
           for d in (0.0, 170.0, 340.0)]
     ok5 = kr[0] > kr[1] > kr[2]
-    ok = ok1 and ok2 and ok3 and ok4 and ok5
-    print(f"{'live-core: bank/poison/boron/enrich/rod5 physics':<52}"
-          f"bank {runner.rho_pcm(k_out)-runner.rho_pcm(k_in):+.0f} pcm, "
-          f"rod5 {runner.rho_pcm(kr[2])-runner.rho_pcm(kr[0]):+.0f} pcm  "
+    # 2-D -> 3-D lift: 'buckled' mode is endpoint-EXACT (folded Sa kept,
+    # reflective ends) == the 2-D solve; 'physical' mode unfolds the
+    # buckling and adds real reflectors, producing an axial shape (F_z>1)
+    csm = presets.preset_smr(); csm["div"] = 2
+    ax = presets.preset_smr()["axial3d"]
+    ksm = runner.run_case(csm)["keff"]
+    kbk = runner.run_case(livecore.lift_to_3d(csm, ax, "buckled"))["keff"]
+    ok6 = abs(ksm - kbk) < 5e-6
+    cph = livecore.lift_to_3d(csm, ax, "physical")
+    rph = runner.run_case(cph)
+    ok7 = rph.get("fz", 1.0) > 1.05
+    # generic continuous bank depth on the lifted SMR: deeper CRA -> lower
+    # k, and full insertion reproduces the as-loaded (rods-in) core
+    kd = [runner.run_case(livecore.bank_depth_cfg(cph, 4, 2, d))["keff"]
+          for d in (0.0, 100.0, 200.0)]
+    ok8 = kd[0] > kd[1] > kd[2] and abs(kd[2] - rph["keff"]) < 5e-6
+    ok = (ok1 and ok2 and ok3 and ok4 and ok5 and ok6 and ok7 and ok8)
+    print(f"{'live-core: bank/boron/enrich/rod5 + 2D->3D lift':<52}"
+          f"lift {runner.rho_pcm(kbk)-runner.rho_pcm(ksm):+.1f} pcm, "
+          f"depth {runner.rho_pcm(kd[2])-runner.rho_pcm(kd[0]):+.0f} pcm  "
           f"{'PASS' if ok else 'FAIL'}")
     return ok
 

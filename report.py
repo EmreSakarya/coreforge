@@ -11,7 +11,7 @@ import plots
 import presets
 import runner
 
-VERSION = "8.5"
+VERSION = "8.6"
 
 _CSS = """
 body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -93,9 +93,9 @@ def build_html(cfg, title, ref_keff=None, result=None, burn=None,
                  "−0.0 pcm"),
                 ("Bare square 1-group (analytic B²)", "1.2610188",
                  "1.2610203", "−0.1 pcm"),
-                ("IAEA-2D PWR, h=1 cm", "1.0295785", "1.02959", "−1.1 pcm"),
-                ("IAEA-3D PWR (full x-y-z, h=2, dz=4)", "1.0289590",
-                 "1.02903", "−6.7 pcm"),
+                ("IAEA-2D PWR, h=1 cm", "1.0295843", "1.02959", "−0.5 pcm"),
+                ("IAEA-3D PWR (full x-y-z, div=4)", "1.0288958",
+                 "1.02903", "−12.7 pcm"),
                 ("C5G7 MOX pin-cell diffusion demo, h=0.63",
                  "1.1863920", "1.18655 (MCNP transport)", "−11 pcm")]:
         H.append("<tr><td>" + "</td><td>".join(row) + "</td></tr>")

@@ -1,5 +1,5 @@
 !=======================================================================
-!  COREFORGE v8.5
+!  COREFORGE v8.6
 !  2-D / 3-D multigroup neutron diffusion eigenvalue engine (k_eff)
 !  for arbitrary reactor cores.  NZ = 1 (default) reproduces the 2-D
 !  engine bit-for-bit; NZ > 1 solves full x-y-z cores with per-layer
@@ -496,7 +496,7 @@ program coreforge
   end if
   call get_command_argument(1, infile)
   if (trim(infile) == '--version') then
-     write(*,'(a)') 'COREFORGE 8.5 (2D/3D multigroup diffusion engine)'
+     write(*,'(a)') 'COREFORGE 8.6 (2D/3D multigroup diffusion engine)'
      stop
   end if
 

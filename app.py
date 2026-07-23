@@ -26,7 +26,7 @@ import thermal
 import ui
 import xslib
 
-APP_VERSION = "8.5"
+APP_VERSION = "8.6"
 
 st.set_page_config(page_title="CoreForge · reactor core simulator",
                    page_icon="⚛️", layout="wide",
@@ -47,6 +47,7 @@ def load_preset(p):
     ss.gamma = float(p["gamma"])
     ss.axial = copy.deepcopy(p.get("axial"))
     ss.rod_meta = copy.deepcopy(p.get("rod_meta"))
+    ss.axial3d = copy.deepcopy(p.get("axial3d"))
     ss.divz = int(p.get("axial", {}).get("divz", 1)) if p.get("axial") else 1
     ss.ref_keff = p.get("ref_keff")
     ss.ref_source = p.get("ref_source")
@@ -91,6 +92,7 @@ def project_json():
         divz=int(ss.get("divz", 1)), blocks=ss.blocks,
         materials=ss.materials, bc=ss.bc, gamma=ss.gamma,
         axial=ss.get("axial"), rod_meta=ss.get("rod_meta"),
+        axial3d=ss.get("axial3d"),
         ref_keff=ss.get("ref_keff"), ref_source=ss.get("ref_source"),
         ref_fp=ss.get("ref_fp"),
         omega=ss.omega, ninner=int(ss.ninner),
@@ -107,7 +109,7 @@ def load_project(d):
              div=int(d["div"]), blocks=d["blocks"],
              materials=d["materials"], bc=list(d["bc"]),
              gamma=float(d["gamma"]), axial=d.get("axial"),
-             rod_meta=d.get("rod_meta"),
+             rod_meta=d.get("rod_meta"), axial3d=d.get("axial3d"),
              ref_keff=d.get("ref_keff"), ref_source=d.get("ref_source"))
     load_preset(p)
     # trust the SAVED fingerprint, not one recomputed from the file: a
@@ -1676,16 +1678,18 @@ with tabs[9]:
     st.header("Live core — move rods, change boron / enrichment, watch k")
     st.write("An interactive console for the **currently loaded core** "
              "(pick any benchmark in 📚 or build your own in 🧱). Every "
-             "control below re-solves the real diffusion eigenvalue "
-             "problem — nothing is interpolated — and the maps, the 3-D "
-             "view and k_eff update immediately. The controls adapt to "
-             "the core: rod-5 depth appears for IAEA-3D, rod banks for "
-             "cores loaded with CRA/rodded materials, boron & enrichment "
-             "for physics-generated (designer) fuels, and a generic "
+             "control re-solves the real diffusion eigenvalue problem — "
+             "nothing is interpolated. **Control rods move continuously "
+             "on every core that has them**: a 2-D core is lifted to an "
+             "explicit 3-D core (its folded axial buckling is unfolded "
+             "into real axial reflectors), so partial insertion is true "
+             "per-layer physics, not a fudge factor. Boron & enrichment "
+             "appear for physics-generated (designer) fuels, a generic "
              "absorber for plain benchmark constants.")
 
     base_cfg = current_cfg()
-    lc = livecore.describe_controls(base_cfg, ss.get("rod_meta"))
+    lc = livecore.describe_controls(base_cfg, ss.get("rod_meta"),
+                                    ss.get("axial3d"))
     lcL, lcR = st.columns([5, 7], gap="large")
 
     with lcL:
@@ -1695,6 +1699,32 @@ with tabs[9]:
             help="Solves on a coarsened mesh so every change answers in a "
                  "fraction of a second. Uncheck to use the sidebar mesh.")
 
+        # -- 3-D axial model for 2-D cores with movable banks ----------
+        lc_lift = False
+        if lc["liftable"]:
+            lc_lift = st.checkbox(
+                "3-D axial model — move rods continuously", True,
+                key=f"lc_lift_{REV}",
+                help=("physical lift: the axial buckling folded into Σa "
+                      "is removed and explicit axial reflectors + vacuum "
+                      "ends are added (the honest 3-D counterpart of "
+                      "this 2-D model). Without it, banks are binary "
+                      "in/out." if lc["lift_mode"] == "physical" else
+                      "extrudes the core with reflective ends — exactly "
+                      "equivalent to the 2-D solve at the endpoints."))
+
+        # -- bank/rod geometry context ----------------------------------
+        ax3 = ss.get("axial3d") or {}
+        if base_cfg.get("axial"):
+            _zb, _zt = livecore.fissile_span(base_cfg)
+            lc_H = _zt - _zb
+            lc_dz = float(base_cfg["axial"]["dz"])
+        elif lc_lift:
+            lc_H = float(ax3.get("core_h", 200.0))
+            lc_dz = float(ax3.get("dz", 20.0))
+        else:
+            lc_H, lc_dz = None, None
+
         lc_depth = None
         if lc["has_rod5"]:
             dzq = float(ss.axial["dz"])
@@ -1703,17 +1733,32 @@ with tabs[9]:
                 0.0, float(lc["core_h"]), 80.0, step=dzq,
                 key=f"lc_d5_{REV}")
             st.caption(f"= **{100.0*lc_depth/lc['core_h']:.0f}%** inserted "
-                       f"(quantised to Δz = {dzq:.0f} cm). The four other "
-                       f"rods of the benchmark stay fully inserted.")
+                       f"(quantised to Δz = {dzq:.0f} cm)")
 
-        lc_banks = {}
-        for (rid, uid, label) in lc["swaps"]:
+        lc_bank_depth = {}          # (rid,uid) -> depth [cm]
+        lc_banks = {}               # (rid,uid) -> inserted (binary path)
+        for (rid, uid, label) in lc["depth_banks"]:
+            if lc_H is not None:
+                lc_bank_depth[(rid, uid)] = st.slider(
+                    f"bank insertion · {label} [cm]",
+                    0.0, float(lc_H), float(lc_H), step=float(lc_dz),
+                    key=f"lc_bd_{rid}_{REV}",
+                    help="Continuous per-layer insertion from the top of "
+                         "the fuel: above the tip the map keeps the "
+                         "rodded material, below it the unrodded "
+                         "partner takes over.")
+            else:
+                lc_banks[(rid, uid)] = st.checkbox(
+                    f"bank inserted · {label}", True,
+                    key=f"lc_bank_{rid}_{REV}",
+                    help="Enable the 3-D axial model above to move this "
+                         "bank continuously.")
+        for (rid, uid, label) in lc["binary_banks"]:
             lc_banks[(rid, uid)] = st.checkbox(
-                f"bank inserted · {label}", True,
-                key=f"lc_bank_{rid}_{REV}",
-                help=f"Unchecking replaces material {rid} by its unrodded "
-                     f"partner (id {uid}) everywhere — a full bank "
-                     f"withdrawal.")
+                f"inserted · {label}", True, key=f"lc_bank_{rid}_{REV}",
+                help=f"Binary swap (material {rid} ↔ {uid}) — this "
+                     f"absorber sits outside the fuel, partial depth "
+                     f"has no meaning for it.")
 
         lc_ppm = None
         if lc["designer"]:
@@ -1756,9 +1801,17 @@ with tabs[9]:
         if lc_cfg.get("axial"):
             lc_cfg["axial"]["divz"] = 1
     try:
+        if lc_lift:
+            lc_cfg = livecore.lift_to_3d(lc_cfg, ss.get("axial3d"),
+                                         mode=lc["lift_mode"])
+            lc_tags.append("3-D lift")
         if lc["has_rod5"] and lc_depth is not None:
             lc_cfg = livecore.rod5_cfg(lc_cfg, ss.rod_meta, lc_depth)
             lc_tags.append(f"rod5 {lc_depth:.0f}cm")
+        for (rid, uid), dep in lc_bank_depth.items():
+            if dep < lc_H - 1e-9:
+                lc_cfg = livecore.bank_depth_cfg(lc_cfg, rid, uid, dep)
+                lc_tags.append(f"bank{rid} {dep:.0f}cm")
         for (rid, uid), inserted in lc_banks.items():
             if not inserted:
                 lc_cfg = livecore.bank_out_cfg(lc_cfg, rid, uid)
@@ -1842,29 +1895,53 @@ with tabs[9]:
         with lcR:
             lc_bp = runner.block_powers(lc_res, lc_scfg)
             lc_is3d = bool(lc_scfg.get("axial"))
+            # fuel height (fissile span) drives the tower height and the
+            # depth reference for the rod columns
+            view_H, zb = None, 0.0
+            if lc_is3d:
+                try:
+                    zb, zt = livecore.fissile_span(lc_scfg)
+                    view_H = zt - zb
+                except Exception:
+                    view_H = (sum(int(z["layers"]) for z in
+                                  lc_scfg["axial"]["zones"])
+                              * float(lc_scfg["axial"]["dz"]))
+            # rod columns (3-D) + axial-diagram bars, generic over banks
+            rods, axial_bars = [], []
+            if lc_is3d and view_H:
+                if lc["has_rod5"]:
+                    rods += livecore.rod_geometry(ss.rod_meta, lc_depth)
+                    axial_bars += [("rods 1-4", float(lc["core_h"])),
+                                   ("rod 5", float(lc_depth))]
+                for (rid, uid, label) in lc["depth_banks"]:
+                    dep = float(lc_bank_depth.get((rid, uid), view_H))
+                    rods += livecore.rod_boxes_for(base_cfg, rid, dep,
+                                                   view_H)
+                    axial_bars.append((label.split("(")[0].strip()[:16],
+                                       dep))
             lc_view = st.radio("view", ["🧊 3-D core", "🗺 2-D maps"],
                                horizontal=True, key=f"lc_view_{REV}",
                                label_visibility="collapsed")
             if lc_view.startswith("🧊"):
                 if lc_is3d:
-                    ch = (float(lc["core_h"]) if lc["has_rod5"] else
-                          sum(int(z["layers"]) for z in
-                              lc_scfg["axial"]["zones"])
-                          * float(lc_scfg["axial"]["dz"]))
-                    rods = (livecore.rod_geometry(ss.rod_meta, lc_depth)
-                            if lc["has_rod5"] else [])
                     st.plotly_chart(plots.core3d_fig(
-                        lc_bp, lc_scfg["pitch"], core_h=ch, rods=rods,
+                        lc_bp, lc_scfg["pitch"], core_h=view_H, rods=rods,
                         title="Assembly towers · colour = P/P̄ · dark "
-                              "columns = rods"), width="stretch")
+                              "columns = inserted rods"), width="stretch")
                 else:
                     st.plotly_chart(plots.core3d_fig(
                         lc_bp, lc_scfg["pitch"], core_h=None,
-                        title="Power towers · height & colour = P/P̄"),
+                        title="Assembly map · colour = P/P̄"),
                         width="stretch")
-                    st.caption("2-D core: the tower HEIGHT is the "
-                               "assembly power P/P̄ (no axial dimension "
-                               "exists in this model).")
+                    if lc["liftable"]:
+                        st.caption("Flat tiles coloured by assembly power. "
+                                   "Tick **3-D axial model** on the left to "
+                                   "give the core real height and slide the "
+                                   "rods in and out.")
+                    else:
+                        st.caption("Flat tiles coloured by assembly power "
+                                   "(this core has no movable rods / axial "
+                                   "dimension).")
             else:
                 p1, p2 = st.columns(2)
                 with p1:
@@ -1874,11 +1951,9 @@ with tabs[9]:
                 with p2:
                     st.plotly_chart(plots.block_power_fig(
                         lc_bp, lc_scfg["pitch"]), width="stretch")
-            if lc["has_rod5"]:
+            if axial_bars:
                 st.plotly_chart(plots.rod_axial_fig(
-                    float(lc["core_h"]),
-                    [("rod 1-4 (bank)", float(lc["core_h"]))]
-                    + [("rod 5", float(lc_depth))],
+                    view_H, axial_bars,
                     dz=float(lc_scfg["axial"]["dz"])), width="stretch")
     elif not lc_err:
         st.info("Adjust a control (or press Solve) to bring the core "
@@ -1886,7 +1961,7 @@ with tabs[9]:
                 "Engine not available — build it first (see sidebar).")
 
 st.divider()
-st.caption("CoreForge v8.5 — SMR/MMR neutronics design & analysis code "
+st.caption("CoreForge v8.6 — SMR/MMR neutronics design & analysis code "
            "system · Fortran 2-D/3-D multigroup diffusion (red-black SOR, "
            "OpenMP) · 3-D core builder + project save/load · live "
            "interactive core (rods/boron/enrichment) · IAEA-2D −0.5 pcm "

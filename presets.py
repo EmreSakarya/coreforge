@@ -137,6 +137,11 @@ def preset_iaea2d():
         gamma=0.4692,
         ref_keff=1.02959,
         ref_source="ANL-7416 benchmark book, problem 11-A2 (2D IAEA)",
+        # live-core 3-D lift: the axial physics folded into Sa (Bg2) can
+        # be UNFOLDED and replaced by explicit reflectors — this preset's
+        # own 3-D counterpart (IAEA-3D) uses exactly these numbers.
+        axial3d=dict(b2=_BG2, core_h=340.0, dz=20.0,
+                     refl_mat=4, refl_cm=20.0),
     )
 
 
@@ -178,6 +183,8 @@ def preset_minicore():
         gamma=0.4692,
         ref_keff=None,
         ref_source=None,
+        axial3d=dict(b2=_BG2, core_h=340.0, dz=20.0,
+                     refl_mat=4, refl_cm=20.0),
     )
 
 
@@ -309,6 +316,10 @@ def preset_smr():
         gamma=0.4692,
         ref_keff=None,
         ref_source=None,
+        # H ~ 2 m core folded as _SMR_BZ2; water reflector (id 6) becomes
+        # the explicit axial reflector in the live-core 3-D lift.
+        axial3d=dict(b2=_SMR_BZ2, core_h=200.0, dz=20.0,
+                     refl_mat=6, refl_cm=20.0),
     )
 
 
@@ -353,6 +364,10 @@ def preset_designer(ppm=1000.0):
         bc=["reflective", "vacuum", "reflective", "vacuum"],
         gamma=0.4692,
         ref_keff=None, ref_source=None,
+        # designer XS carry NO folded buckling (b2=0); the lift simply
+        # adds explicit borated-water axial reflectors (material 4).
+        axial3d=dict(b2=0.0, core_h=200.0, dz=20.0,
+                     refl_mat=4, refl_cm=20.0),
     )
 
 

@@ -251,15 +251,22 @@ discrete burnable absorbers, equilibrium-Xe only, depletion is 2-D
   the stated core thermal power
 - 🔧 tools: material-swap worth, **rod-insertion S-curve (3-D)**,
   critical boron [ppm], generic ΔΣa criticality search
-- 🕹 **Live core**: an interactive console for ANY loaded core —
-  slide **rod-5's depth** (IAEA-3D), toggle auto-detected **CRA banks**
-  in/out, dial **soluble boron / per-fuel enrichment** (designer cores)
-  or a generic absorber, and every change **re-solves the real
-  eigenvalue problem** (fast coarse mesh, fingerprint-cached) with
-  instant k_eff, Δρ-vs-baseline, a **3-D assembly-tower view** (colour =
-  P/P̄, dark columns = rods at their true depth), an axial rod diagram
-  and a change log. Mechanisms live in `livecore.py`; their physics
-  (bank worth +, deeper rod ↓k, boron ↓k, enrichment ↑k) is locked in by
+- 🕹 **Live core**: an interactive console for ANY loaded core where
+  **control rods move continuously on every core that has them**. A 2-D
+  core (SMR, IAEA-2D) is **lifted to an explicit 3-D core** — the axial
+  buckling folded into Σa is *unfolded* and replaced by real axial
+  reflectors + vacuum ends (the honest 3-D counterpart of the folded
+  model; the `buckled` mode is endpoint-exact to the 2-D solve, locked in
+  by `verify.py`). Then a **per-layer bank-insertion slider** withdraws
+  the CRA depth by depth; IAEA-3D keeps its native **rod-5 depth**;
+  designer cores expose **soluble boron / per-fuel enrichment**; plain
+  benchmark cores get a **generic absorber**. Every change **re-solves
+  the real eigenvalue problem** (fast coarse mesh, fingerprint-cached)
+  with instant k_eff, Δρ-vs-baseline, F_xy/F_z, a **3-D assembly-tower
+  view** (true fuel height, colour = P/P̄, dark columns = rods at their
+  actual insertion depth), an axial rod diagram and a change log.
+  Mechanisms live in `livecore.py`; their physics (bank worth +, deeper
+  rod ↓k, boron ↓k, enrichment ↑k, lift endpoint-exact) is locked in by
   `verify.py`.
 - 🗒️ session run history · 🧵 auto thread selection
 

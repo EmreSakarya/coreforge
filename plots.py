@@ -209,15 +209,15 @@ def core3d_fig(bp_topfirst, pitch, core_h=None, rods=None,
     """Assembly-tower 3-D view of the core.
 
     bp_topfirst : (nby,nbx) per-assembly P/P̄ (NaN = non-fuel), top-first.
-    core_h      : physical core height [cm] -> towers of that height,
-                  coloured by assembly power; None (2-D core) -> tower
-                  HEIGHT encodes P/P̄ directly (power-tower view).
+    core_h      : physical core height [cm] -> towers of that height;
+                  None (2-D core) -> uniform unit-height towers.  In BOTH
+                  cases the colour carries the physics (P/P̄).
     rods        : [(x0,x1,y0,y1,depth_cm), ...] absolute cm, drawn as dark
                   columns descending `depth` from the top (3-D cores)."""
     bp = np.flipud(np.asarray(bp_topfirst, dtype=float))     # bottom-first
     nby, nbx = bp.shape
     is3d = core_h is not None
-    zmax = float(core_h) if is3d else float(np.nanmax(bp)) * 1.0
+    zmax = float(core_h) if is3d else 1.0
     X, Y, Z, I, J, K, V = [], [], [], [], [], [], []
     g = 0.06 * pitch                                          # visual gap
     for jy in range(nby):
@@ -225,10 +225,9 @@ def core3d_fig(bp_topfirst, pitch, core_h=None, rods=None,
             v = bp[jy, ix]
             if not np.isfinite(v):
                 continue
-            h = zmax if is3d else v
             _cuboid(ix * pitch + g, (ix + 1) * pitch - g,
                     jy * pitch + g, (jy + 1) * pitch - g,
-                    0.0, h, v, X, Y, Z, I, J, K, V)
+                    0.0, zmax, v, X, Y, Z, I, J, K, V)
     span = max(np.nanmax(bp) - 1.0, 1.0 - np.nanmin(bp), 0.05)
     fig = go.Figure(go.Mesh3d(
         x=X, y=Y, z=Z, i=I, j=J, k=K, intensity=V,
@@ -255,12 +254,14 @@ def core3d_fig(bp_topfirst, pitch, core_h=None, rods=None,
         scene=dict(
             xaxis=dict(title="x [cm]", color=_MUTED, gridcolor=_GRID),
             yaxis=dict(title="y [cm]", color=_MUTED, gridcolor=_GRID),
-            zaxis=dict(title="z [cm]" if is3d else "P/P̄",
+            zaxis=dict(title="z [cm]" if is3d else "",
+                       showticklabels=is3d,
                        color=_MUTED, gridcolor=_GRID),
             # tall cores would dwarf the radial detail under aspect="data";
             # keep the footprint true and cap the visual height instead
             aspectmode="manual",
-            aspectratio=dict(x=1.0, y=nby / max(nbx, 1), z=0.75),
+            aspectratio=dict(x=1.0, y=nby / max(nbx, 1),
+                             z=0.75 if is3d else 0.3),
             camera=dict(eye=dict(x=1.45, y=-1.45, z=0.9))))
     return fig
 
